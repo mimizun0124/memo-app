@@ -12,7 +12,7 @@ interface MemoItem {
 id: string;
 folderId: string | null;
 title: string;
-pages: string[]; // ページ分割用の配列（各要素が1ページ分のHTML文字列）
+pages: string[];
 isPinned: boolean;
 updatedAt: number;
 }
@@ -22,8 +22,8 @@ export default function MemoApp() {
 const [folders, setFolders] = useState<Folder[]>([]);
 const [memos, setMemos] = useState<MemoItem[]>([]);
 
-// 画面遷移状態: 'folders' (フォルダ一覧) -> 'list' (メモ一覧) -> 'editor' (編集画面)
-const [view, setView] = useState<"folders" | "list" | "editor">("folders");
+// 左パネルの表示状態: 'folders' (フォルダ一覧) -> 'list' (メモ一覧)
+const [leftView, setLeftView] = useState<"folders" | "list">("folders");
 const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
 const [activeMemoId, setActiveMemoId] = useState<string | null>(null);
 
@@ -35,7 +35,6 @@ const editorRef = useRef<HTMLDivElement>(null);
 
 // --- 初期化・自動保存 (localStorage) ---
 useEffect(() => {
-// データ読み込み
 const savedFolders = localStorage.getItem("smartnotes_folders");
 const savedMemos = localStorage.getItem("smartnotes_memos");
 
@@ -47,7 +46,6 @@ setFolders([{ id: "default", name: "すべてのメモ" }]);
 
 if (savedMemos) {
 const parsedMemos = JSON.parse(savedMemos);
-// 旧データの互換性維持（contentの文字列をpagesの配列に変換）
 const migratedMemos = parsedMemos.map((m: any) => ({
 ...m,
 pages: m.pages || [m.content || ""]
@@ -56,7 +54,6 @@ setMemos(migratedMemos);
 }
 }, []);
 
-// memos, foldersが更新されたら自動保存
 useEffect(() => {
 if (folders.length > 0) {
 localStorage.setItem("smartnotes_folders", JSON.stringify(folders));
@@ -68,7 +65,6 @@ if (memos.length > 0) {
 localStorage.setItem("smartnotes_memos", JSON.stringify(memos));
 }
 }, [memos]);
-
 
 // --- メモ・フォルダ操作 ---
 const handleCreateMemo = () => {
@@ -83,7 +79,6 @@ updatedAt: Date.now(),
 setMemos([newMemo, ...memos]);
 setActiveMemoId(newMemo.id);
 setActivePageIndex(0);
-setView("editor");
 };
 
 const updateActiveMemo = (updates: Partial<MemoItem>) => {
@@ -107,17 +102,15 @@ return m;
 
 const handleDeleteFolder = (folderId: string, e: React.MouseEvent) => {
 e.stopPropagation();
-if (folderId === "default") return; // デフォルトは削除不可
+if (folderId === "default") return;
 if (window.confirm("このフォルダを削除しますか？\n（中のメモは「すべてのメモ」に移動します）")) {
 setFolders(prev => prev.filter(f => f.id !== folderId));
-// 削除されたフォルダ内のメモを「すべてのメモ」に移動
 setMemos(prev => prev.map(m => m.folderId === folderId ? { ...m, folderId: "default" } : m));
 if (activeFolderId === folderId) {
 setActiveFolderId("default");
 }
 }
 };
-
 
 // --- ページ操作 ---
 const handleAddPage = () => {
@@ -130,7 +123,6 @@ return { ...m, pages: newPages, updatedAt: Date.now() };
 return m;
 })
 );
-// 新しいページを開くためにインデックスを進める
 setActivePageIndex(activeMemo ? activeMemo.pages.length : 0);
 };
 
@@ -150,13 +142,11 @@ return { ...m, pages: newPages, updatedAt: Date.now() };
 return m;
 })
 );
-// 削除後、前のページに戻る（0ページ目を消した場合は0のまま）
 setActivePageIndex(prev => (prev > 0 ? prev - 1 : 0));
 }
 };
 
-
-// --- リッチテキスト操作 (選択した文字のみ変更) ---
+// --- リッチテキスト操作 ---
 const applyFormat = (command: string, value?: string) => {
 document.execCommand(command, false, value);
 if (editorRef.current) {
@@ -164,7 +154,6 @@ updateActivePageContent(editorRef.current.innerHTML);
 }
 };
 
-// 文字サイズ変更
 const changeFontSize = (sizePx: string) => {
 const selection = window.getSelection();
 if (!selection || selection.rangeCount === 0) return;
@@ -180,13 +169,11 @@ updateActivePageContent(editorRef.current.innerHTML);
 }
 };
 
-
 // --- 描画ロジック ---
 const activeMemo = memos.find((m) => m.id === activeMemoId);
 const displayMemos = memos
 .filter((m) => (activeFolderId === "default" ? true : m.folderId === activeFolderId))
 .filter((m) => {
-// 検索機能のフィルタリング
 if (!searchQuery) return true;
 const q = searchQuery.toLowerCase();
 const titleMatch = m.title.toLowerCase().includes(q);
@@ -201,27 +188,29 @@ return a.isPinned ? -1 : 1;
 return (
 <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans select-none">
 
-{/* 1. フォルダ一覧画面 */}
-{view === "folders" && (
-<div className="flex-1 flex flex-col w-full bg-slate-50">
+{/* ＝＝＝ 左側ペイン (30%) ＝＝＝ */}
+<div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-slate-50 relative">
+
+{/* 左ペイン：フォルダ一覧表示 */}
+{leftView === "folders" && (
+<>
 <div className="p-6 pb-2 border-b border-slate-200">
-<h1 className="text-3xl font-bold">フォルダ</h1>
+<h1 className="text-2xl font-bold">フォルダ</h1>
 </div>
 <div className="flex-1 overflow-y-auto p-4 space-y-2">
 {folders.map((folder) => (
 <div
 key={folder.id}
-onClick={() => { setActiveFolderId(folder.id); setView("list"); setSearchQuery(""); }}
-className="p-4 bg-white rounded-xl shadow-sm cursor-pointer flex justify-between items-center group"
+onClick={() => { setActiveFolderId(folder.id); setLeftView("list"); setSearchQuery(""); }}
+className="p-4 bg-white rounded-xl shadow-sm cursor-pointer flex justify-between items-center group transition-colors hover:bg-slate-50"
 >
-<span className="font-semibold text-lg flex items-center gap-2">
+<span className="font-semibold flex items-center gap-2">
 {folder.name}
 </span>
 <div className="flex items-center gap-4">
 <span className="text-slate-400 text-sm">
 {memos.filter(m => folder.id === "default" ? true : m.folderId === folder.id).length}
 </span>
-{/* 削除ボタン (デフォルトフォルダ以外) */}
 {folder.id !== "default" && (
 <button
 onClick={(e) => handleDeleteFolder(folder.id, e)}
@@ -238,87 +227,81 @@ onClick={() => {
 const name = prompt("新規フォルダ名:");
 if (name && name.trim()) setFolders([...folders, { id: Date.now().toString(), name: name.trim() }]);
 }}
-className="mt-4 text-indigo-600 font-semibold p-2"
+className="mt-4 text-indigo-600 font-semibold p-2 hover:bg-indigo-50 rounded-lg w-full text-left transition-colors"
 >
 ＋ 新規フォルダ作成
 </button>
 </div>
-</div>
+</>
 )}
 
-{/* 2. メモ一覧画面 */}
-{view === "list" && (
-<div className="flex-1 flex flex-col w-full bg-slate-50 relative">
+{/* 左ペイン：メモ一覧表示 */}
+{leftView === "list" && (
+<>
 <div className="p-4 flex flex-col gap-3 border-b border-slate-200 bg-white">
-<div className="flex items-center gap-2">
-<button onClick={() => setView("folders")} className="text-indigo-600 font-semibold p-2">
-＜ フォルダ
+<div className="flex items-center justify-between gap-2">
+<button onClick={() => setLeftView("folders")} className="text-indigo-600 font-semibold py-1 pr-2 hover:opacity-70">
+＜ 戻る
 </button>
-<h1 className="text-xl font-bold flex-1 text-center truncate">
+<h1 className="text-lg font-bold flex-1 text-center truncate">
 {folders.find(f => f.id === activeFolderId)?.name}
 </h1>
-<div className="w-16"></div> {/* バランス調整用 */}
+<div className="w-12"></div> {/* バランス調整用 */}
 </div>
-{/* 検索バー */}
 <input
 type="text"
-placeholder="タイトルや内容で検索..."
+placeholder="検索..."
 value={searchQuery}
 onChange={(e) => setSearchQuery(e.target.value)}
-className="w-full bg-slate-100 text-slate-700 px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+className="w-full bg-slate-100 text-slate-700 px-3 py-2 rounded-lg outline-none focus:ring-2 focus:ring-indigo-300 transition-all text-sm"
 />
 </div>
 
-<div className="flex-1 overflow-y-auto p-4 space-y-2">
+<div className="flex-1 overflow-y-auto p-3 space-y-2 relative">
 {displayMemos.length === 0 && (
-<div className="text-center text-slate-400 mt-10">メモがありません</div>
+<div className="text-center text-slate-400 mt-10 text-sm">メモがありません</div>
 )}
 {displayMemos.map((memo) => (
 <div
 key={memo.id}
-onClick={() => { setActiveMemoId(memo.id); setActivePageIndex(0); setView("editor"); }}
-className="p-4 bg-white rounded-xl shadow-sm cursor-pointer"
+onClick={() => { setActiveMemoId(memo.id); setActivePageIndex(0); }}
+className={`p-3 rounded-xl shadow-sm cursor-pointer border ${
+activeMemoId === memo.id ? "bg-indigo-50 border-indigo-200" : "bg-white border-transparent hover:border-slate-200"
+}`}
 >
-<div className="font-bold text-lg truncate flex items-center gap-1">
+<div className="font-bold text-base truncate flex items-center gap-1">
 {memo.isPinned && "📌"} {memo.title || "無題のメモ"}
 </div>
-{/* HTMLタグを除去してプレビュー表示 (全ページのテキストを連結) */}
-<div className="text-slate-500 text-sm truncate mt-1">
+<div className="text-slate-500 text-xs truncate mt-1">
 {memo.pages.join(" ").replace(/<[^>]*>?/gm, '') || "追加テキストなし"}
 </div>
 <div className="flex justify-between items-center mt-2">
 <div className="text-xs text-slate-400">
 {new Date(memo.updatedAt).toLocaleDateString()}
 </div>
-<div className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-全 {memo.pages.length} ページ
-</div>
 </div>
 </div>
 ))}
 </div>
 
-{/* 新規作成ボタン (右下フローティング) */}
+{/* 新規作成ボタン (左ペイン右下) */}
 <button
 onClick={handleCreateMemo}
-className="absolute bottom-8 right-8 w-14 h-14 bg-indigo-600 rounded-full shadow-lg flex items-center justify-center text-white text-3xl pb-1"
+className="absolute bottom-6 right-6 w-12 h-12 bg-indigo-600 hover:bg-indigo-700 transition-colors rounded-full shadow-lg flex items-center justify-center text-white text-2xl pb-1"
 >
 ＋
 </button>
-</div>
+</>
 )}
+</div>
 
-{/* 3. エディタ画面 (全画面表示) */}
-{view === "editor" && activeMemo && (
-<div className="flex-1 flex flex-col w-full bg-white">
-{/* ヘッダー */}
+{/* ＝＝＝ 右側ペイン (70%) ＝＝＝ */}
+<div className="flex-1 flex flex-col bg-white">
+{activeMemo ? (
+<>
+{/* エディタヘッダー */}
 <div className="flex flex-col border-b border-slate-100">
-<div className="flex items-center justify-between p-3">
-<button onClick={() => setView("list")} className="text-indigo-600 font-semibold p-2">
-＜ 戻る
-</button>
-
-{/* フォルダ移動用セレクトボックス */}
+<div className="flex items-center justify-end p-3">
 <div className="flex items-center text-sm font-medium text-slate-500 gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
 📂 移動先:
 <select
@@ -357,7 +340,6 @@ defaultValue=""
 <button onClick={() => applyFormat("bold")} className="font-bold px-3 hover:text-indigo-600 transition-colors">B</button>
 </div>
 
-{/* ページめくりコントロール */}
 <div className="flex items-center gap-2 bg-indigo-50 rounded-lg p-1 border border-indigo-100">
 <button
 disabled={activePageIndex === 0}
@@ -380,8 +362,8 @@ className="px-3 py-1 bg-white rounded shadow-sm text-indigo-600 disabled:opacity
 </div>
 </div>
 
-{/* 編集エリア */}
-<div className="flex-1 overflow-y-auto p-6 flex flex-col">
+{/* 編集エリア (独立スクロール) */}
+<div className="flex-1 overflow-y-auto p-8 flex flex-col">
 <input
 type="text"
 value={activeMemo.title}
@@ -390,7 +372,7 @@ placeholder="タイトル"
 className="text-3xl font-bold w-full outline-none mb-6 border-b border-transparent focus:border-slate-200 pb-2 transition-colors"
 />
 <div
-key={`${activeMemo.id}-page-${activePageIndex}`} // ページ切り替え時にDOMを再構築して入力をリセット
+key={`${activeMemo.id}-page-${activePageIndex}`}
 ref={editorRef}
 contentEditable
 suppressContentEditableWarning
@@ -415,8 +397,16 @@ className="bg-indigo-600 text-white hover:bg-indigo-700 font-bold px-4 py-2 roun
 ＋ 次のページを追加
 </button>
 </div>
+</>
+) : (
+/* メモ未選択時の空状態 */
+<div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50">
+<div className="text-4xl mb-4">📄</div>
+<p className="font-medium">左側のリストからメモを選択するか</p>
+<p className="font-medium">新しく作成してください</p>
 </div>
 )}
+</div>
 </div>
 );
 }
