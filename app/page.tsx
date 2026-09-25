@@ -364,7 +364,6 @@ export default function MemoApp() {
  suppressContentEditableWarning
  onBlur={(e) => updateActiveMemo({ content: e.currentTarget.innerHTML })}
  className="w-full min-h-[50vh] outline-none leading-relaxed text-lg"
- placeholder="メモを入力..."
  dangerouslySetInnerHTML={{ __html: activeMemo.content }}
  />
  </div>
