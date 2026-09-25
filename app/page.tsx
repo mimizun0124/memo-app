@@ -129,7 +129,7 @@ function ChessBlock({ block, updateBlock, removeBlock }: { block: Block, updateB
  ) : (
  <div className="flex flex-col items-center gap-4">
  <div className="w-full max-w-[340px] aspect-square rounded-sm overflow-hidden shadow-md bg-white">
- <Chessboard position={fen} arePiecesDraggable={false} />
+ <Chessboard arePiecesDraggable={false} />
  </div>
  <div className="flex items-center gap-6 bg-white px-5 py-2 rounded-full shadow-sm border border-slate-200">
  <button onClick={handlePrev} disabled={currentMove === 0} className="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-full disabled:opacity-30 disabled:hover:bg-slate-100 font-bold transition-colors"> </button>
