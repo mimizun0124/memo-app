@@ -22,6 +22,9 @@ export default function MemoApp() {
 const [folders, setFolders] = useState<Folder[]>([]);
 const [memos, setMemos] = useState<MemoItem[]>([]);
 
+// サイドパネルの開閉状態
+const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+
 // 左パネルの表示状態: 'folders' (フォルダ一覧) -> 'list' (メモ一覧)
 const [leftView, setLeftView] = useState<"folders" | "list">("folders");
 const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -79,6 +82,7 @@ updatedAt: Date.now(),
 setMemos([newMemo, ...memos]);
 setActiveMemoId(newMemo.id);
 setActivePageIndex(0);
+setIsSidebarOpen(true); // 新規作成時はリストを開く
 };
 
 const updateActiveMemo = (updates: Partial<MemoItem>) => {
@@ -189,12 +193,13 @@ return (
 <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans select-none">
 
 {/* ＝＝＝ 左側ペイン (30%) ＝＝＝ */}
-<div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-slate-50 relative">
+{isSidebarOpen && (
+<div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-slate-50 relative transition-all duration-300 ease-in-out">
 
 {/* 左ペイン：フォルダ一覧表示 */}
 {leftView === "folders" && (
 <>
-<div className="p-6 pb-2 border-b border-slate-200">
+<div className="p-6 pb-2 border-b border-slate-200 flex justify-between items-center">
 <h1 className="text-2xl font-bold">フォルダ</h1>
 </div>
 <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -246,7 +251,7 @@ className="mt-4 text-indigo-600 font-semibold p-2 hover:bg-indigo-50 rounded-lg 
 <h1 className="text-lg font-bold flex-1 text-center truncate">
 {folders.find(f => f.id === activeFolderId)?.name}
 </h1>
-<div className="w-12"></div> {/* バランス調整用 */}
+<div className="w-12"></div>
 </div>
 <input
 type="text"
@@ -284,7 +289,6 @@ activeMemoId === memo.id ? "bg-indigo-50 border-indigo-200" : "bg-white border-t
 ))}
 </div>
 
-{/* 新規作成ボタン (左ペイン右下) */}
 <button
 onClick={handleCreateMemo}
 className="absolute bottom-6 right-6 w-12 h-12 bg-indigo-600 hover:bg-indigo-700 transition-colors rounded-full shadow-lg flex items-center justify-center text-white text-2xl pb-1"
@@ -294,14 +298,36 @@ className="absolute bottom-6 right-6 w-12 h-12 bg-indigo-600 hover:bg-indigo-700
 </>
 )}
 </div>
+)}
 
-{/* ＝＝＝ 右側ペイン (70%) ＝＝＝ */}
-<div className="flex-1 flex flex-col bg-white">
+{/* ＝＝＝ 右側ペイン (70% or 100%) ＝＝＝ */}
+<div className="flex-1 flex flex-col bg-white relative transition-all duration-300">
+
+{/* メモ未選択時のトップボタン (エディタがない画面用) */}
+{!activeMemo && (
+<div className="absolute top-4 left-4 z-10">
+<button
+onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+className="p-2 bg-white hover:bg-slate-100 rounded-lg shadow-sm border border-slate-200 text-slate-600 font-bold text-sm transition-colors flex items-center gap-2"
+>
+{isSidebarOpen ? "◀ リストを閉じる" : "▶ リストを開く"}
+</button>
+</div>
+)}
+
 {activeMemo ? (
 <>
 {/* エディタヘッダー */}
 <div className="flex flex-col border-b border-slate-100">
-<div className="flex items-center justify-end p-3">
+<div className="flex items-center justify-between p-3">
+{/* サイドバー開閉ボタン */}
+<button
+onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+className="p-1.5 px-3 bg-white hover:bg-slate-100 rounded-lg shadow-sm border border-slate-200 text-slate-600 font-bold text-sm transition-colors flex items-center gap-2"
+>
+{isSidebarOpen ? "◀ 閉じる" : "▶ 開く"}
+</button>
+
 <div className="flex items-center text-sm font-medium text-slate-500 gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
 📂 移動先:
 <select
@@ -362,7 +388,7 @@ className="px-3 py-1 bg-white rounded shadow-sm text-indigo-600 disabled:opacity
 </div>
 </div>
 
-{/* 編集エリア (独立スクロール) */}
+{/* 編集エリア */}
 <div className="flex-1 overflow-y-auto p-8 flex flex-col">
 <input
 type="text"
