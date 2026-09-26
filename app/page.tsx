@@ -18,16 +18,15 @@ type BlockType = 'text' | 'accordion' | 'interactive-chess' | 'static-chess';
 export interface BlockItem {
  id: string;
  type: BlockType;
- title?: string; // アコーディオンのタイトル等
- content: string; // テキスト本文、PGN、FENなどを格納
+ title?: string;
+ content: string; // テキスト本文（HTML）、PGN、FENなどを格納
 }
 
 interface MemoItem {
  id: string;
  folderId: string | null;
  title: string;
- // ページごとにブロックの配列を持つ構造に変更
- pages: BlockItem[][]; 
+ pages: BlockItem[][];
  isPinned: boolean;
  updatedAt: number;
 }
@@ -43,11 +42,83 @@ export interface BlockProps {
 // 2. カスタムブロックコンポーネント群
 // ==========================================
 
+// --- リッチテキストブロック (文字装飾対応) ---
+const RichTextBlock: React.FC<BlockProps & {
+ pageLength: number;
+ showBlockMenu: { show: boolean, blockId: string | null };
+ setShowBlockMenu: (val: { show: boolean, blockId: string | null }) => void;
+ setLastFocused: (id: string, el: HTMLElement) => void;
+ handleAddBlock: (afterId: string | null, type: BlockType) => void;
+}> = ({ block, updateBlock, deleteBlock, pageLength, showBlockMenu, setShowBlockMenu, setLastFocused, handleAddBlock }) => {
+ const contentRef = useRef<HTMLDivElement>(null);
+
+ // 初回や外部ツールバーから内容が変更された時にDOMを更新
+ useEffect(() => {
+ if (contentRef.current && contentRef.current.innerHTML !== block.content) {
+ contentRef.current.innerHTML = block.content;
+ }
+ }, [block.content]);
+
+ const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+ const text = e.currentTarget.textContent || "";
+ if (text === '/') {
+ setShowBlockMenu({ show: true, blockId: block.id });
+ } else {
+ setShowBlockMenu({ show: false, blockId: null });
+ }
+ };
+
+ const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+ updateBlock(block.id, { content: e.currentTarget.innerHTML });
+ };
+
+ const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+ if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) {
+ e.preventDefault();
+ deleteBlock(block.id);
+ }
+ };
+
+ return (
+ <div className="relative">
+ <div
+ ref={contentRef}
+ contentEditable
+ suppressContentEditableWarning
+ onFocus={(e) => setLastFocused(block.id, e.currentTarget)}
+ onInput={handleInput}
+ onBlur={handleBlur}
+ onKeyDown={handleKeyDown}
+ className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
+ data-placeholder="入力するか '/' でコマンドを表示"
+ />
+ 
+ {/* スラッシュコマンドメニュー */}
+ {showBlockMenu.show && showBlockMenu.blockId === block.id && (
+ <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
+ <div className="p-2 text-xs font-bold text-slate-400 bg-slate-50 border-b border-slate-100">
+ ブロックを追加
+ </div>
+ <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'accordion')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors">
+ <span className="text-xl"> </span> アコーディオン
+ </button>
+ <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'interactive-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50">
+ <span className="text-xl"> </span> インタラクティブ盤面 (PGN)
+ </button>
+ <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'static-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50">
+ <span className="text-xl"> </span> 静的盤面 (FEN)
+ </button>
+ </div>
+ )}
+ </div>
+ );
+};
+
 // --- アコーディオンブロック ---
 const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  return (
  <div className="relative group mb-4">
- <button 
+ <button
  onClick={() => deleteBlock(block.id)}
  className="absolute top-2 right-2 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200"
  >
@@ -61,7 +132,7 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  value={block.title || ''}
  placeholder="タイトルを入力..."
  onChange={(e) => updateBlock(block.id, { title: e.target.value })}
- onClick={(e) => e.preventDefault()} // 入力時の開閉トグルを防ぐ
+ onClick={(e) => e.preventDefault()}
  className="flex-1 border-none outline-none bg-transparent focus:ring-0"
  />
  </summary>
@@ -92,12 +163,12 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  console.warn("Invalid PGN", e);
  }
  const history = game.history({ verbose: true });
- 
+
  const playGame = new Chess();
  for (let i = 0; i <= currentMoveIndex && i < history.length; i++) {
  playGame.move(history[i]);
  }
- 
+
  return { currentFen: playGame.fen(), moveHistory: history };
  }, [block.content, currentMoveIndex]);
 
@@ -107,26 +178,26 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
 
  return (
  <div className="relative group mb-4 border border-slate-300 rounded-lg p-4 bg-white shadow-sm flex flex-col md:flex-row gap-4">
- <button 
+ <button
  onClick={() => deleteBlock(block.id)}
  className="absolute top-2 right-2 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200"
  >
  削除
  </button>
- 
+
  <div className="w-full md:w-1/2 flex flex-col items-center">
  <div className="w-full max-w-[400px]">
- <Chessboard/>
+ <Chessboard position={currentFen} arePiecesDraggable={false} />
  </div>
  <div className="flex gap-4 mt-4">
- <button 
+ <button
  onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded font-bold text-slate-700 disabled:opacity-50"
  disabled={currentMoveIndex < 0}
  >
  ＜ 戻る
  </button>
- <button 
+ <button
  onClick={() => setCurrentMoveIndex(prev => Math.min(moveHistory.length - 1, prev + 1))}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded font-bold text-slate-700 disabled:opacity-50"
  disabled={currentMoveIndex >= moveHistory.length - 1}
@@ -169,14 +240,14 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
 
  return (
  <div className="relative group mb-4 border border-slate-300 rounded-lg p-4 bg-white shadow-sm flex flex-col md:flex-row gap-6 items-center">
- <button 
+ <button
  onClick={() => deleteBlock(block.id)}
  className="absolute top-2 right-2 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200"
  >
  削除
  </button>
  <div className="w-full md:w-1/2 max-w-[300px]">
- <Chessboard/>
+ <Chessboard position={fenPosition} arePiecesDraggable={false} />
  </div>
  <div className="w-full md:w-1/2 flex flex-col gap-2">
  <label className="text-sm font-bold text-slate-700">FEN文字列</label>
@@ -191,7 +262,6 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  );
 };
 
-
 // ==========================================
 // 3. メインアプリケーション
 // ==========================================
@@ -204,39 +274,32 @@ export default function MemoApp() {
  const [activeMemoId, setActiveMemoId] = useState<string | null>(null);
  const [activePageIndex, setActivePageIndex] = useState<number>(0);
  const [searchQuery, setSearchQuery] = useState("");
- 
+
  const [menuTargetMemoId, setMenuTargetMemoId] = useState<string | null>(null);
  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
  const isLongPress = useRef<boolean>(false);
- 
- // スラッシュコマンド（ブロック追加メニュー）の表示状態
- const [showBlockMenu, setShowBlockMenu] = useState<{show: boolean, blockId: string | null}>({show: false, blockId: null});
+
+ // 最後にフォーカスされたテキストブロックを保存（ツールバーの装飾適用に使用）
+ const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
+
+ const [showBlockMenu, setShowBlockMenu] = useState<{ show: boolean, blockId: string | null }>({ show: false, blockId: null });
 
  useEffect(() => {
  const savedFolders = localStorage.getItem("smartnotes_folders_v2");
  const savedMemos = localStorage.getItem("smartnotes_memos_v2");
 
- if (savedFolders) {
- setFolders(JSON.parse(savedFolders));
- } else {
- setFolders([{ id: "default", name: "すべてのメモ" }]);
- }
+ if (savedFolders) setFolders(JSON.parse(savedFolders));
+ else setFolders([{ id: "default", name: "すべてのメモ" }]);
 
- if (savedMemos) {
- setMemos(JSON.parse(savedMemos));
- }
+ if (savedMemos) setMemos(JSON.parse(savedMemos));
  }, []);
 
  useEffect(() => {
- if (folders.length > 0) {
- localStorage.setItem("smartnotes_folders_v2", JSON.stringify(folders));
- }
+ if (folders.length > 0) localStorage.setItem("smartnotes_folders_v2", JSON.stringify(folders));
  }, [folders]);
 
  useEffect(() => {
- if (memos.length > 0) {
- localStorage.setItem("smartnotes_memos_v2", JSON.stringify(memos));
- }
+ if (memos.length > 0) localStorage.setItem("smartnotes_memos_v2", JSON.stringify(memos));
  }, [memos]);
 
  const handleCreateMemo = () => {
@@ -244,8 +307,7 @@ export default function MemoApp() {
  id: Date.now().toString(),
  folderId: activeFolderId || "default",
  title: "",
- // 初期状態は空のテキストブロック1つを持つページを1つ作成
- pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]], 
+ pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]],
  isPinned: false,
  updatedAt: Date.now(),
  };
@@ -262,7 +324,6 @@ export default function MemoApp() {
  };
 
  // --- ブロック操作関数群 ---
- 
  const handleUpdateBlock = (blockId: string, updates: Partial<BlockItem>) => {
  setMemos((prev) =>
  prev.map((m) => {
@@ -287,7 +348,6 @@ export default function MemoApp() {
  if (m.id === activeMemoId) {
  const newPages = [...m.pages];
  newPages[activePageIndex] = newPages[activePageIndex].filter(b => b.id !== blockId);
- // もしページ内のすべてのブロックが消えたら、空のテキストブロックを追加しておく
  if (newPages[activePageIndex].length === 0) {
  newPages[activePageIndex] = [{ id: Date.now().toString(), type: 'text', content: '' }];
  }
@@ -311,49 +371,55 @@ export default function MemoApp() {
  if (m.id === activeMemoId) {
  const newPages = [...m.pages];
  const pageBlocks = [...newPages[activePageIndex]];
- 
+
  if (afterBlockId === null) {
- // 末尾に追加
  pageBlocks.push(newBlock);
  } else {
- // 指定したブロックの直後に追加
  const index = pageBlocks.findIndex(b => b.id === afterBlockId);
- if (index !== -1) {
- pageBlocks.splice(index + 1, 0, newBlock);
- } else {
- pageBlocks.push(newBlock);
+ if (index !== -1) pageBlocks.splice(index + 1, 0, newBlock);
+ else pageBlocks.push(newBlock);
  }
- }
- 
+
  newPages[activePageIndex] = pageBlocks;
  return { ...m, pages: newPages, updatedAt: Date.now() };
  }
  return m;
  })
  );
- setShowBlockMenu({show: false, blockId: null});
+ setShowBlockMenu({ show: false, blockId: null });
  };
 
- // テキスト入力中のスラッシュ検知
- const handleTextChange = (blockId: string, content: string) => {
- if (content === '/') {
- setShowBlockMenu({show: true, blockId});
- } else {
- setShowBlockMenu({show: false, blockId: null});
+ // --- 文字装飾ロジック ---
+ const applyFormat = (command: string, value?: string) => {
+ document.execCommand(command, false, value);
+ if (lastFocusedBlockRef.current) {
+ handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML });
  }
- handleUpdateBlock(blockId, { content });
  };
 
+ const changeFontSize = (sizePx: string) => {
+ const selection = window.getSelection();
+ if (!selection || selection.rangeCount === 0) return;
+ const span = document.createElement("span");
+ span.style.fontSize = `${sizePx}px`;
+ span.textContent = selection.toString();
+ const range = selection.getRangeAt(0);
+ range.deleteContents();
+ range.insertNode(span);
 
+ if (lastFocusedBlockRef.current) {
+ handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML });
+ }
+ };
+
+ // --- フォルダ・ページ操作群 ---
  const handleDeleteFolder = (folderId: string, e: React.MouseEvent) => {
  e.stopPropagation();
  if (folderId === "default") return;
  if (window.confirm("このフォルダを削除しますか？\n（中のメモは「すべてのメモ」に移動します）")) {
  setFolders(prev => prev.filter(f => f.id !== folderId));
  setMemos(prev => prev.map(m => m.folderId === folderId ? { ...m, folderId: "default" } : m));
- if (activeFolderId === folderId) {
- setActiveFolderId("default");
- }
+ if (activeFolderId === folderId) setActiveFolderId("default");
  }
  };
 
@@ -406,9 +472,7 @@ export default function MemoApp() {
  };
 
  const handleTogglePin = (memoId: string) => {
- setMemos((prev) =>
- prev.map((m) => (m.id === memoId ? { ...m, isPinned: !m.isPinned } : m))
- );
+ setMemos((prev) => prev.map((m) => (m.id === memoId ? { ...m, isPinned: !m.isPinned } : m)));
  setMenuTargetMemoId(null);
  };
 
@@ -430,8 +494,7 @@ export default function MemoApp() {
  if (!searchQuery) return true;
  const q = searchQuery.toLowerCase();
  const titleMatch = m.title.toLowerCase().includes(q);
- // ブロック内検索
- const contentMatch = m.pages.some(page => 
+ const contentMatch = m.pages.some(page =>
  page.some(block => block.content.toLowerCase().includes(q) || (block.title && block.title.toLowerCase().includes(q)))
  );
  return titleMatch || contentMatch;
@@ -443,7 +506,6 @@ export default function MemoApp() {
 
  return (
  <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800 font-sans">
- 
  {/* ＝＝＝ 左側ペイン (30%) ＝＝＝ */}
  {isSidebarOpen && (
  <div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-white relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
@@ -544,8 +606,7 @@ export default function MemoApp() {
  {memo.isPinned && <span className="text-sm"> </span>} {memo.title || "無題のメモ"}
  </div>
  <div className="text-slate-500 text-xs truncate mt-1.5 font-medium">
- {/* ブロックデータからプレビュー用テキストを抽出 */}
- {memo.pages[0]?.find(b => b.type === 'text')?.content || "追加テキストなし"}
+ {memo.pages[0]?.find(b => b.type === 'text')?.content.replace(/<[^>]*>?/gm, '') || "追加テキストなし"}
  </div>
  <div className="flex justify-between items-center mt-3">
  <div className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">
@@ -607,8 +668,36 @@ export default function MemoApp() {
  </div>
  </div>
 
- {/* ページ切り替え */}
- <div className="flex items-center justify-end px-6 pb-3">
+ {/* 装飾ツールバー ＆ ページ切り替え */}
+ <div className="flex items-center justify-between px-6 pb-3">
+ <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 overflow-x-auto">
+ <input 
+ type="color" 
+ onChange={(e) => applyFormat("foreColor", e.target.value)} 
+ className="w-6 h-6 rounded cursor-pointer border-none bg-transparent"
+ title="文字色"
+ />
+ <div className="w-px h-4 bg-slate-300"></div>
+ <select 
+ onChange={(e) => changeFontSize(e.target.value)}
+ className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700"
+ defaultValue=""
+ >
+ <option value="" disabled>サイズ</option>
+ {[8, 10, 12, 14, 16, 18, 20, 22, 24, 26].map(s => (
+ <option key={s} value={s}>{s}px</option>
+ ))}
+ </select>
+ <div className="w-px h-4 bg-slate-300"></div>
+ <button 
+ onMouseDown={(e) => e.preventDefault()} 
+ onClick={() => applyFormat("bold")} 
+ className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700"
+ >
+ B
+ </button>
+ </div>
+
  <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100">
  <button 
  disabled={activePageIndex === 0} 
@@ -660,39 +749,16 @@ export default function MemoApp() {
 
  {/* ブロックの描画振り分け */}
  {block.type === 'text' && (
- <div className="relative">
- <textarea
- value={block.content}
- onChange={(e) => handleTextChange(block.id, e.target.value)}
- placeholder="入力するか '/' でコマンドを表示"
- className="w-full text-lg leading-relaxed outline-none resize-none overflow-hidden bg-transparent py-1 placeholder-slate-300 text-slate-800"
- rows={block.content.split('\n').length || 1}
- onKeyDown={(e) => {
- if (e.key === 'Backspace' && block.content === '' && activeMemo.pages[activePageIndex].length > 1) {
- e.preventDefault();
- handleDeleteBlock(block.id);
- }
- }}
+ <RichTextBlock
+ block={block}
+ updateBlock={handleUpdateBlock}
+ deleteBlock={handleDeleteBlock}
+ pageLength={activeMemo.pages[activePageIndex].length}
+ showBlockMenu={showBlockMenu}
+ setShowBlockMenu={setShowBlockMenu}
+ setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }}
+ handleAddBlock={handleAddBlock}
  />
- 
- {/* スラッシュコマンドメニュー */}
- {showBlockMenu.show && showBlockMenu.blockId === block.id && (
- <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
- <div className="p-2 text-xs font-bold text-slate-400 bg-slate-50 border-b border-slate-100">
- ブロックを追加
- </div>
- <button onClick={() => handleAddBlock(block.id, 'accordion')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors">
- <span className="text-xl"> </span> アコーディオン
- </button>
- <button onClick={() => handleAddBlock(block.id, 'interactive-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50">
- <span className="text-xl"> </span> インタラクティブ盤面 (PGN)
- </button>
- <button onClick={() => handleAddBlock(block.id, 'static-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50">
- <span className="text-xl"> </span> 静的盤面 (FEN)
- </button>
- </div>
- )}
- </div>
  )}
 
  {block.type === 'accordion' && (
@@ -710,12 +776,12 @@ export default function MemoApp() {
  ))}
  </div>
 
- {/* ページ末尾の追加領域 (クリックでテキストブロック追加) */}
+ {/* ページ末尾の追加領域 */}
  <div 
  className="h-32 w-full mt-4 cursor-text"
  onClick={() => {
  const lastBlock = activeMemo.pages[activePageIndex]?.[activeMemo.pages[activePageIndex].length - 1];
- if (!lastBlock || lastBlock.type !== 'text' || lastBlock.content !== '') {
+ if (!lastBlock || lastBlock.type !== 'text' || lastBlock.content.replace(/<[^>]*>?/gm, '') !== '') {
  handleAddBlock(lastBlock?.id || null, 'text');
  }
  }}
