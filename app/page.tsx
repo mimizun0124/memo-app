@@ -145,35 +145,79 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
 // --- インタラクティブチェスボード (PGN用) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
+ const [game, setGame] = useState(new Chess());
 
  const { currentFen, moveHistory } = useMemo(() => {
- const game = new Chess();
- try { if (block.content) game.loadPgn(block.content); } catch (e) {}
- const history = game.history({ verbose: true });
+ const newGame = new Chess();
+ try { 
+ if (block.content) {
+ newGame.loadPgn(block.content); 
+ }
+ } catch (e) {
+ console.error("Invalid PGN:", e);
+ }
+ const history = newGame.history({ verbose: true });
+ 
  const playGame = new Chess();
  for (let i = 0; i <= currentMoveIndex && i < history.length; i++) {
  playGame.move(history[i]);
  }
+ 
+ // Update the game state with the position at the current move index
+ setGame(playGame);
+
  return { currentFen: playGame.fen(), moveHistory: history };
  }, [block.content, currentMoveIndex]);
 
  useEffect(() => { setCurrentMoveIndex(moveHistory.length - 1); }, [block.content, moveHistory.length]);
 
+ function onDrop(sourceSquare: string, targetSquare: string) {
+ try {
+ const move = game.move({
+ from: sourceSquare,
+ to: targetSquare,
+ promotion: "q" 
+ });
+
+ if (move) {
+ // Append the new move to the PGN content
+ const newGame = new Chess();
+ if (block.content) {
+ try {
+ newGame.loadPgn(block.content);
+ } catch(e) {}
+ }
+ 
+ // Ensure we are appending to the end of the game
+ if (currentMoveIndex === moveHistory.length - 1) {
+ newGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+ updateBlock(block.id, { content: newGame.pgn() });
+ }
+ return true; 
+ }
+ } catch (e) {
+ console.error(e);
+ }
+ return false;
+ }
+
  return (
- <div className="relative group mb-8 w-full text-left flex flex-col items-start">
+ <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4">
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
+ <div className="flex flex-col items-center">
  <div className="w-full max-w-[400px] mb-4">
  {/* @ts-ignore */}
- <Chessboard position={currentFen} arePiecesDraggable={false} />
+ <Chessboard position={currentFen} onPieceDrop={onDrop} arePiecesDraggable={true} />
  </div>
 
  <div className="flex gap-4 mb-4 w-full max-w-[400px] justify-center">
  <button onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex < 0}>＜ 戻る</button>
  <button onClick={() => setCurrentMoveIndex(prev => Math.min(moveHistory.length - 1, prev + 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex >= moveHistory.length - 1}>進む ＞</button>
  </div>
+ </div>
 
- <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
+ <details className="flex-1 w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200" open>
  <summary className="cursor-pointer font-bold outline-none"> PGN設定 (エディタ用・タップで開く)</summary>
  <div className="mt-2 flex flex-col gap-2">
  <textarea value={block.content || ''} placeholder="PGNを入力 (例: 1. e4 e5...)" onChange={(e) => updateBlock(block.id, { content: e.target.value })} className="w-full h-24 border border-slate-300 rounded p-2 outline-none focus:border-indigo-400 font-mono bg-white text-slate-800" />
@@ -191,45 +235,52 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  );
 };
 
-// --- 静的チェスボード (バグを修正し、確実に手動で動かせるようにした盤面) ---
+// --- 静的チェスボード (手動で動かせる) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
- // block.contentを直接盤面の状態（ソース・オブ・トゥルース）として扱うことでズレを防止
+ const [game, setGame] = useState(new Chess());
+
+ useEffect(() => {
+ try {
  const fenPosition = block.content || 'start';
+ if (game.fen() !== fenPosition) {
+ const newGame = new Chess();
+ if (fenPosition !== 'start') newGame.load(fenPosition);
+ setGame(newGame);
+ }
+ } catch (e) {}
+ }, [block.content]);
 
  function onDrop(sourceSquare: string, targetSquare: string) {
  try {
- // 現在のFEN文字列からチェスのルール検証用のインスタンスを作成
- const game = new Chess(fenPosition === 'start' ? undefined : fenPosition);
- 
- // 動かせるかどうかを検証
- const move = game.move({
- from: sourceSquare,
- to: targetSquare,
- promotion: "q" // ポーンが一番奥に到達した場合は簡易的にクイーンに成る
- });
+ const gameCopy = new Chess(game.fen());
+ let move = null;
+ try {
+ move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+ } catch (err) {
+ move = gameCopy.move({ from: sourceSquare, to: targetSquare });
+ }
 
  if (move) {
- // チェスのルール上正しい動きだった場合、新しいFEN文字列を保存して盤面を更新
- updateBlock(block.id, { content: game.fen() });
+ setGame(gameCopy);
+ updateBlock(block.id, { content: gameCopy.fen() });
  return true; 
  }
  } catch (e) {
- // ルール上間違った動き（見えない駒を飛び越えるなど）の場合は弾く
- return false;
+ console.error(e);
  }
  return false;
  }
 
  return (
- <div className="relative group mb-8 w-full text-left flex flex-col items-start">
+ <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4">
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
- <div className="w-full max-w-[400px] mb-4 relative z-0">
+ <div className="w-full max-w-[400px] mb-4">
  {/* @ts-ignore */}
- <Chessboard position={fenPosition} onPieceDrop={onDrop} />
+ <Chessboard position={game.fen()} onPieceDrop={onDrop} arePiecesDraggable={true} />
  </div>
 
- <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
+ <details className="flex-1 w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200" open>
  <summary className="cursor-pointer font-bold outline-none"> FEN設定 (エディタ用・タップで開く)</summary>
  <div className="mt-2 flex flex-col gap-2">
  <label className="text-xs font-bold text-slate-700">FEN文字列（上の盤面と連動しています）</label>
