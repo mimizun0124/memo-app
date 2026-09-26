@@ -337,7 +337,6 @@ export default function MemoApp() {
  setShowBlockMenu({ show: false, blockId: null });
  };
 
- // 左揃えなどのフォーマット適用関数
  const applyFormat = (command: string, value?: string) => {
  document.execCommand(command, false, value);
  if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML });
@@ -487,8 +486,6 @@ export default function MemoApp() {
  <select onChange={(e) => changeFontSize(e.target.value)} className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" defaultValue=""><option value="" disabled>サイズ</option>{[8, 10, 12, 14, 16, 18, 20, 22, 24, 26].map(s => (<option key={s} value={s}>{s}px</option>))}</select>
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
- 
- {/* ▼追加した配置設定ボタン▼ */}
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("justifyLeft")} className="px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 font-bold" title="左に揃える">左</button>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("justifyCenter")} className="px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 font-bold" title="中央に揃える">中</button>
@@ -502,8 +499,8 @@ export default function MemoApp() {
  </div>
 
  <div className="flex-1 overflow-y-auto w-full">
- {/* ▼ mx-auto を削除して左寄せに修正 ▼ */}
- <div className="max-w-4xl p-8 lg:p-12 pb-32 flex flex-col items-start w-full text-left">
+ {/* ▼ 横幅の制限を解除し、画面いっぱいまで使えるように修正 ▼ */}
+ <div className="w-full p-8 lg:p-12 pb-32 flex flex-col items-start text-left">
  <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
  <div className="space-y-4 w-full flex flex-col items-start">
  {activeMemo.pages[activePageIndex]?.map((block, index) => (
