@@ -107,7 +107,7 @@ const RichTextBlock: React.FC<BlockProps & {
  );
 };
 
-// --- アコーディオンブロック (動画のようなパッと開閉するスタイル) ---
+// --- アコーディオンブロック ---
 const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  return (
  <div className="relative group mb-6 text-left w-full">
@@ -142,7 +142,7 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  );
 };
 
-// --- インタラクティブチェスボード (PGN用・ブログのような縦並び) ---
+// --- インタラクティブチェスボード (PGN用) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
 
@@ -163,19 +163,16 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  <div className="relative group mb-8 w-full text-left flex flex-col items-start">
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
- {/* チェス盤本体 (左寄せ) */}
  <div className="w-full max-w-[400px] mb-4">
  {/* @ts-ignore */}
  <Chessboard position={currentFen} arePiecesDraggable={false} />
  </div>
 
- {/* 戻る・進むボタン群 */}
  <div className="flex gap-4 mb-4 w-full max-w-[400px] justify-center">
  <button onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex < 0}>＜ 戻る</button>
  <button onClick={() => setCurrentMoveIndex(prev => Math.min(moveHistory.length - 1, prev + 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex >= moveHistory.length - 1}>進む ＞</button>
  </div>
 
- {/* エディタ用の入力エリア (ブログ風の見た目を邪魔しないよう薄く配置) */}
  <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
  <summary className="cursor-pointer font-bold outline-none"> PGN設定 (エディタ用・タップで開く)</summary>
  <div className="mt-2 flex flex-col gap-2">
@@ -194,7 +191,7 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  );
 };
 
-// --- 静的チェスボード (自由に手動で駒を動かせる・ブログ風縦並び) ---
+// --- 静的チェスボード (手動で動かせる) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [game, setGame] = useState(new Chess());
 
@@ -209,13 +206,10 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  } catch (e) {}
  }, [block.content]);
 
- // 手動で駒を動かす安全な関数 (弾かれるのを防止)
  function onDrop(sourceSquare: string, targetSquare: string) {
  try {
  const gameCopy = new Chess(game.fen());
  let move = null;
- 
- // プロモーションを含む動きを安全に試行
  try {
  move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
  } catch (err) {
@@ -225,25 +219,23 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  if (move) {
  setGame(gameCopy);
  updateBlock(block.id, { content: gameCopy.fen() });
- return true; // 成功した場合はtrueを返して駒を定着させる
+ return true; 
  }
  } catch (e) {
  console.error(e);
  }
- return false; // 無効な動きの時は元の場所に戻る
+ return false;
  }
 
  return (
  <div className="relative group mb-8 w-full text-left flex flex-col items-start">
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
- {/* チェス盤本体 (左寄せ) */}
  <div className="w-full max-w-[400px] mb-4">
  {/* @ts-ignore */}
  <Chessboard position={game.fen()} onPieceDrop={onDrop} arePiecesDraggable={true} />
  </div>
 
- {/* エディタ用の入力エリア */}
  <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
  <summary className="cursor-pointer font-bold outline-none"> FEN設定 (エディタ用・タップで開く)</summary>
  <div className="mt-2 flex flex-col gap-2">
@@ -345,6 +337,7 @@ export default function MemoApp() {
  setShowBlockMenu({ show: false, blockId: null });
  };
 
+ // 左揃えなどのフォーマット適用関数
  const applyFormat = (command: string, value?: string) => {
  document.execCommand(command, false, value);
  if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML });
@@ -485,6 +478,8 @@ export default function MemoApp() {
  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 px-3 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 text-slate-600 font-bold text-sm transition-colors flex items-center gap-2">{isSidebarOpen ? " " : " "}</button>
  <div className="flex items-center text-sm font-bold text-slate-500 gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"> 移動先: <select value={activeMemo.folderId || "default"} onChange={(e) => updateActiveMemo({ folderId: e.target.value })} className="bg-transparent font-extrabold outline-none cursor-pointer max-w-[120px] truncate text-slate-800">{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select></div>
  </div>
+
+ {/* 装飾ツールバー ＆ ページ切り替え */}
  <div className="flex items-center justify-between px-6 pb-3">
  <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 overflow-x-auto">
  <input type="color" onChange={(e) => applyFormat("foreColor", e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" title="文字色" />
@@ -492,6 +487,11 @@ export default function MemoApp() {
  <select onChange={(e) => changeFontSize(e.target.value)} className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" defaultValue=""><option value="" disabled>サイズ</option>{[8, 10, 12, 14, 16, 18, 20, 22, 24, 26].map(s => (<option key={s} value={s}>{s}px</option>))}</select>
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
+ 
+ {/* ▼追加した配置設定ボタン▼ */}
+ <div className="w-px h-4 bg-slate-300"></div>
+ <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("justifyLeft")} className="px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 font-bold" title="左に揃える">左</button>
+ <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("justifyCenter")} className="px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 font-bold" title="中央に揃える">中</button>
  </div>
  <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100">
  <button disabled={activePageIndex === 0} onClick={() => setActivePageIndex(p => p - 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors"> 前のページ</button>
