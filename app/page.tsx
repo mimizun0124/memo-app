@@ -191,38 +191,31 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  );
 };
 
-// --- 静的チェスボード (手動で動かせる) ---
+// --- 静的チェスボード (バグを修正し、確実に手動で動かせるようにした盤面) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
- const [game, setGame] = useState(new Chess());
-
- useEffect(() => {
- try {
+ // block.contentを直接盤面の状態（ソース・オブ・トゥルース）として扱うことでズレを防止
  const fenPosition = block.content || 'start';
- if (game.fen() !== fenPosition) {
- const newGame = new Chess();
- if (fenPosition !== 'start') newGame.load(fenPosition);
- setGame(newGame);
- }
- } catch (e) {}
- }, [block.content]);
 
  function onDrop(sourceSquare: string, targetSquare: string) {
  try {
- const gameCopy = new Chess(game.fen());
- let move = null;
- try {
- move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
- } catch (err) {
- move = gameCopy.move({ from: sourceSquare, to: targetSquare });
- }
+ // 現在のFEN文字列からチェスのルール検証用のインスタンスを作成
+ const game = new Chess(fenPosition === 'start' ? undefined : fenPosition);
+ 
+ // 動かせるかどうかを検証
+ const move = game.move({
+ from: sourceSquare,
+ to: targetSquare,
+ promotion: "q" // ポーンが一番奥に到達した場合は簡易的にクイーンに成る
+ });
 
  if (move) {
- setGame(gameCopy);
- updateBlock(block.id, { content: gameCopy.fen() });
+ // チェスのルール上正しい動きだった場合、新しいFEN文字列を保存して盤面を更新
+ updateBlock(block.id, { content: game.fen() });
  return true; 
  }
  } catch (e) {
- console.error(e);
+ // ルール上間違った動き（見えない駒を飛び越えるなど）の場合は弾く
+ return false;
  }
  return false;
  }
@@ -231,9 +224,9 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  <div className="relative group mb-8 w-full text-left flex flex-col items-start">
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
- <div className="w-full max-w-[400px] mb-4">
+ <div className="w-full max-w-[400px] mb-4 relative z-0">
  {/* @ts-ignore */}
- <Chessboard position={game.fen()} onPieceDrop={onDrop} arePiecesDraggable={true} />
+ <Chessboard position={fenPosition} onPieceDrop={onDrop} />
  </div>
 
  <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
