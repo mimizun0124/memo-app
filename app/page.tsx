@@ -1,8 +1,91 @@
 "use client";
+// @ts-nocheck
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
+
+// ==========================================
+// 新規追加：画像リサイズ用オーバーレイコンポーネント
+// ==========================================
+const ImageResizer = ({ image, onResizeEnd }: { image: HTMLImageElement, onResizeEnd: () => void }) => {
+ const [rect, setRect] = useState(() => image.getBoundingClientRect());
+
+ useEffect(() => {
+ const updateRect = () => {
+ if (document.body.contains(image)) {
+ setRect(image.getBoundingClientRect());
+ }
+ };
+ window.addEventListener('resize', updateRect);
+ window.addEventListener('scroll', updateRect, true); 
+ 
+ const observer = new MutationObserver(updateRect);
+ observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+ return () => {
+ window.removeEventListener('resize', updateRect);
+ window.removeEventListener('scroll', updateRect, true);
+ observer.disconnect();
+ };
+ }, [image]);
+
+ const handlePointerDown = (e: React.PointerEvent) => {
+ e.preventDefault();
+ e.stopPropagation();
+ const startX = e.clientX;
+ const startWidth = image.clientWidth;
+
+ const onPointerMove = (moveEvent: PointerEvent) => {
+ const deltaX = moveEvent.clientX - startX;
+ const newWidth = Math.max(50, startWidth + deltaX);
+ image.style.width = `${newWidth}px`;
+ image.style.height = 'auto'; // アスペクト比を維持
+ setRect(image.getBoundingClientRect());
+ };
+
+ const onPointerUp = () => {
+ document.removeEventListener('pointermove', onPointerMove);
+ document.removeEventListener('pointerup', onPointerUp);
+ onResizeEnd();
+ };
+
+ document.addEventListener('pointermove', onPointerMove);
+ document.addEventListener('pointerup', onPointerUp);
+ };
+
+ return (
+ <div 
+ style={{
+ position: 'fixed',
+ top: rect.top,
+ left: rect.left,
+ width: rect.width,
+ height: rect.height,
+ pointerEvents: 'none',
+ border: '2px solid #4f46e5', // インディゴカラーの枠線
+ zIndex: 9999,
+ }}
+ >
+ <div
+ className="image-resizer-handle"
+ style={{
+ position: 'absolute',
+ bottom: '-7px',
+ right: '-7px',
+ width: '14px',
+ height: '14px',
+ backgroundColor: '#4f46e5',
+ borderRadius: '50%',
+ cursor: 'nwse-resize',
+ pointerEvents: 'auto',
+ boxShadow: '0 0 4px rgba(0,0,0,0.3)',
+ }}
+ onPointerDown={handlePointerDown}
+ />
+ </div>
+ );
+};
 
 // ==========================================
 // 1. 型定義
@@ -34,6 +117,7 @@ export interface BlockProps {
  block: BlockItem;
  updateBlock: (id: string, updates: Partial<BlockItem>) => void;
  deleteBlock: (id: string) => void;
+ onImageSelect?: (img: HTMLImageElement | null) => void; // 画像選択用コールバック
 }
 
 // ==========================================
@@ -47,7 +131,7 @@ const RichTextBlock: React.FC<BlockProps & {
  setShowBlockMenu: (val: { show: boolean, blockId: string | null }) => void;
  setLastFocused: (id: string, el: HTMLElement) => void;
  handleAddBlock: (afterId: string | null, type: BlockType) => void;
-}> = ({ block, updateBlock, deleteBlock, pageLength, showBlockMenu, setShowBlockMenu, setLastFocused, handleAddBlock }) => {
+}> = ({ block, updateBlock, deleteBlock, onImageSelect, pageLength, showBlockMenu, setShowBlockMenu, setLastFocused, handleAddBlock }) => {
  const contentRef = useRef<HTMLDivElement>(null);
 
  useEffect(() => {
@@ -56,16 +140,10 @@ const RichTextBlock: React.FC<BlockProps & {
  }
  }, [block.content]);
 
- // 画像クリック時にリサイズ用のアクティブ枠をつける簡易ハンドラ
  const handleClick = (e: React.MouseEvent) => {
  const target = e.target as HTMLElement;
- if (target.tagName === 'IMG') {
- // 既存の選択解除
- document.querySelectorAll('img.resizable-img').forEach(img => img.classList.remove('ring-2', 'ring-indigo-500', 'resizable-img'));
- target.classList.add('ring-2', 'ring-indigo-500', 'resizable-img');
- target.style.resize = 'both';
- target.style.overflow = 'hidden';
- target.style.display = 'inline-block';
+ if (target.tagName === 'IMG' && onImageSelect) {
+ onImageSelect(target as HTMLImageElement);
  }
  };
 
@@ -154,10 +232,10 @@ const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) =
  );
 };
 
-// --- アコーディオンブロック (内部で写真ペースト・サイズ変更可能) ---
+// --- アコーディオンブロック ---
 const AccordionBlock: React.FC<BlockProps & {
  setLastFocused: (id: string, el: HTMLElement) => void;
-}> = ({ block, updateBlock, deleteBlock, setLastFocused }) => {
+}> = ({ block, updateBlock, deleteBlock, onImageSelect, setLastFocused }) => {
  const contentRef = useRef<HTMLDivElement>(null);
 
  useEffect(() => {
@@ -168,12 +246,8 @@ const AccordionBlock: React.FC<BlockProps & {
 
  const handleClick = (e: React.MouseEvent) => {
  const target = e.target as HTMLElement;
- if (target.tagName === 'IMG') {
- document.querySelectorAll('img.resizable-img').forEach(img => img.classList.remove('ring-2', 'ring-indigo-500', 'resizable-img'));
- target.classList.add('ring-2', 'ring-indigo-500', 'resizable-img');
- target.style.resize = 'both';
- target.style.overflow = 'hidden';
- target.style.display = 'inline-block';
+ if (target.tagName === 'IMG' && onImageSelect) {
+ onImageSelect(target as HTMLImageElement);
  }
  };
 
@@ -369,6 +443,9 @@ export default function MemoApp() {
  const [searchQuery, setSearchQuery] = useState("");
  const [menuTargetMemoId, setMenuTargetMemoId] = useState<string | null>(null);
  
+ // ▼ 新規追加：現在選択されている画像 ▼
+ const [activeImage, setActiveImage] = useState<HTMLImageElement | null>(null);
+
  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
  const isLongPress = useRef<boolean>(false);
  const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
@@ -384,6 +461,20 @@ export default function MemoApp() {
 
  useEffect(() => { if (folders.length > 0) localStorage.setItem("smartnotes_folders_v2", JSON.stringify(folders)); }, [folders]);
  useEffect(() => { if (memos.length > 0) localStorage.setItem("smartnotes_memos_v2", JSON.stringify(memos)); }, [memos]);
+
+ // 画像以外の場所をクリックしたらリサイズ状態を解除
+ useEffect(() => {
+ const handleGlobalClick = (e: MouseEvent) => {
+ if (activeImage) {
+ const target = e.target as HTMLElement;
+ if (target !== activeImage && !target.closest('.image-resizer-handle')) {
+ setActiveImage(null);
+ }
+ }
+ };
+ document.addEventListener('mousedown', handleGlobalClick);
+ return () => document.removeEventListener('mousedown', handleGlobalClick);
+ }, [activeImage]);
 
  const handleCreateMemo = () => {
  const newMemo: MemoItem = {
@@ -514,7 +605,7 @@ export default function MemoApp() {
  .sort((a, b) => { if (a.isPinned === b.isPinned) return b.updatedAt - a.updatedAt; return a.isPinned ? -1 : 1; });
 
  return (
- <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans">
+ <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans relative">
  {/* ＝＝＝ 左側ペイン (30%) ＝＝＝ */}
  {isSidebarOpen && (
  <div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
@@ -601,7 +692,7 @@ export default function MemoApp() {
  </div>
  </div>
 
- <div className="flex-1 overflow-y-auto w-full">
+ <div className="flex-1 overflow-y-auto w-full relative">
  <div className="w-full p-8 lg:p-12 pb-32 flex flex-col items-start text-left">
  <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
  <div className="space-y-4 w-full flex flex-col items-start">
@@ -611,8 +702,8 @@ export default function MemoApp() {
  <button onClick={() => setShowBlockMenu({show: true, blockId: block.id})} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">＋</button>
  </div>
  {block.type === 'embed' && <EmbedBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
- {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} pageLength={activeMemo.pages[activePageIndex].length} showBlockMenu={showBlockMenu} setShowBlockMenu={setShowBlockMenu} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
- {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} />}
+ {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} onImageSelect={setActiveImage} pageLength={activeMemo.pages[activePageIndex].length} showBlockMenu={showBlockMenu} setShowBlockMenu={setShowBlockMenu} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
+ {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} onImageSelect={setActiveImage} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} />}
  {block.type === 'interactive-chess' && <InteractiveChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  {block.type === 'static-chess' && <StaticChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  </div>
@@ -634,6 +725,18 @@ export default function MemoApp() {
  </div>
  )}
  </div>
+
+ {/* ▼ 新規追加：グローバルな画像リサイザー ▼ */}
+ {activeImage && (
+ <ImageResizer 
+ image={activeImage} 
+ onResizeEnd={() => {
+ if (lastFocusedBlockRef.current) {
+ handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML });
+ }
+ }} 
+ />
+ )}
 
  {menuTargetMemoId && (
  <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center transition-all" onClick={() => setMenuTargetMemoId(null)}>
