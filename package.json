@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "chess": "^1.5.1",
     "chess.js": "^1.4.0",
     "js": "^0.1.0",

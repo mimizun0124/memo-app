@@ -4,12 +4,32 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 // ==========================================
 // 新規追加：画像リサイズ用オーバーレイコンポーネント
 // ==========================================
 const ImageResizer = ({ image, onResizeEnd }: { image: HTMLImageElement, onResizeEnd: () => void }) => {
  const [rect, setRect] = useState(() => image.getBoundingClientRect());
+
+ // ▼▼▼ 新規追加：アプリを開いた時にRedisからデータを取得（iPad/PC間の同期）する処理 ▼▼▼
+ useEffect(() => {
+ const fetchData = async () => {
+ try {
+ const savedData = await redis.get('shared-image-data');
+ if (savedData) {
+ console.log("iPad/PCから同期されたデータ:", savedData);
+ // 取得成功！ここでデータをアプリに反映させます
+ }
+ } catch (err) {
+ console.error("データの取得エラー:", err);
+ }
+ };
+ fetchData();
+ }, []);
+ // ▲▲▲ ここまで ▲▲▲
 
  useEffect(() => {
  const updateRect = () => {
@@ -30,11 +50,24 @@ const ImageResizer = ({ image, onResizeEnd }: { image: HTMLImageElement, onResiz
  };
  }, [image]);
 
- const handlePointerDown = (e: React.PointerEvent) => {
+ // ▼▼▼ 変更：関数の前に async を付けて非同期通信できるようにしました ▼▼▼
+ const handlePointerDown = async (e: React.PointerEvent) => {
  e.preventDefault();
  e.stopPropagation();
  const startX = e.clientX;
  const startWidth = image.clientWidth;
+
+ // ▼▼▼ 新規追加：操作した時にRedisへデータを保存（iPad/PCへ同期）する処理 ▼▼▼
+ try {
+ await redis.set('shared-image-data', {
+ src: image.src,
+ width: startWidth
+ });
+ console.log("データを保存・同期しました！");
+ } catch (err) {
+ console.error("データの保存エラー:", err);
+ }
+ // ▲▲▲ ここまで ▲▲▲
 
  const onPointerMove = (moveEvent: PointerEvent) => {
  const deltaX = moveEvent.clientX - startX;
