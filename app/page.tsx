@@ -187,7 +187,7 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
 
  <div className="w-full md:w-1/2 flex flex-col items-center">
  <div className="w-full max-w-[400px]">
- <Chessboard position={currentFen} arePiecesDraggable={false} />
+ Chessboar⁠<d allowDragging: currentFen, false options="{{" position: }}/>⁠
  </div>
  <div className="flex gap-4 mt-4">
  <button
@@ -247,7 +247,7 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  削除
  </button>
  <div className="w-full md:w-1/2 max-w-[300px]">
- <Chessboard position={fenPosition} arePiecesDraggable={false} />
+ allowDragging: fals⁠<Chessboard e fenPosition, options="{{" position: }}/>⁠
  </div>
  <div className="w-full md:w-1/2 flex flex-col gap-2">
  <label className="text-sm font-bold text-slate-700">FEN文字列</label>
