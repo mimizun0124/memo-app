@@ -56,6 +56,19 @@ const RichTextBlock: React.FC<BlockProps & {
  }
  }, [block.content]);
 
+ // 画像クリック時にリサイズ用のアクティブ枠をつける簡易ハンドラ
+ const handleClick = (e: React.MouseEvent) => {
+ const target = e.target as HTMLElement;
+ if (target.tagName === 'IMG') {
+ // 既存の選択解除
+ document.querySelectorAll('img.resizable-img').forEach(img => img.classList.remove('ring-2', 'ring-indigo-500', 'resizable-img'));
+ target.classList.add('ring-2', 'ring-indigo-500', 'resizable-img');
+ target.style.resize = 'both';
+ target.style.overflow = 'hidden';
+ target.style.display = 'inline-block';
+ }
+ };
+
  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
  const text = e.currentTarget.textContent || "";
  if (text === '/') {
@@ -68,14 +81,12 @@ const RichTextBlock: React.FC<BlockProps & {
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
  const text = e.currentTarget.textContent?.trim() || "";
 
- // LichessのStudy URLを検知した場合
  if (text.startsWith("https://lichess.org/study/")) {
  const embedUrl = text.replace("https://lichess.org/study/", "https://lichess.org/study/embed/");
  updateBlock(block.id, { type: 'embed', content: embedUrl });
  return;
  }
 
- // LichessのGame URL（単一の試合）を検知した場合
  if (text.match(/^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}$/)) {
  const embedUrl = text.replace("https://lichess.org/", "https://lichess.org/embed/game/") + "?theme=auto&bg=auto";
  updateBlock(block.id, { type: 'embed', content: embedUrl });
@@ -98,12 +109,13 @@ const RichTextBlock: React.FC<BlockProps & {
  ref={contentRef}
  contentEditable
  suppressContentEditableWarning
+ onClick={handleClick}
  onFocus={(e) => setLastFocused(block.id, e.currentTarget)}
  onInput={handleInput}
  onBlur={handleBlur}
  onKeyDown={handleKeyDown}
- className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
- data-placeholder="入力するか '/' でコマンドを表示 (LichessのURLを貼ると自動で盤面になります)"
+ className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 [&_img]:max-w-full [&_img]:cursor-pointer"
+ data-placeholder="入力するか '/' でコマンドを表示 (LichessのURLや画像をペースト可能)"
  />
  {showBlockMenu.show && showBlockMenu.blockId === block.id && (
  <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
@@ -142,8 +154,33 @@ const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) =
  );
 };
 
-// --- アコーディオンブロック ---
-const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
+// --- アコーディオンブロック (内部で写真ペースト・サイズ変更可能) ---
+const AccordionBlock: React.FC<BlockProps & {
+ setLastFocused: (id: string, el: HTMLElement) => void;
+}> = ({ block, updateBlock, deleteBlock, setLastFocused }) => {
+ const contentRef = useRef<HTMLDivElement>(null);
+
+ useEffect(() => {
+ if (contentRef.current && contentRef.current.innerHTML !== block.content) {
+ contentRef.current.innerHTML = block.content || '';
+ }
+ }, [block.content]);
+
+ const handleClick = (e: React.MouseEvent) => {
+ const target = e.target as HTMLElement;
+ if (target.tagName === 'IMG') {
+ document.querySelectorAll('img.resizable-img').forEach(img => img.classList.remove('ring-2', 'ring-indigo-500', 'resizable-img'));
+ target.classList.add('ring-2', 'ring-indigo-500', 'resizable-img');
+ target.style.resize = 'both';
+ target.style.overflow = 'hidden';
+ target.style.display = 'inline-block';
+ }
+ };
+
+ const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+ updateBlock(block.id, { content: e.currentTarget.innerHTML });
+ };
+
  return (
  <div className="relative group mb-6 text-left w-full">
  <button
@@ -152,7 +189,7 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  >
  削除
  </button>
- <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer">
+ <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200">
  <span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span>
  <input
@@ -161,15 +198,19 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  placeholder="タイトルを入力..."
  onChange={(e) => updateBlock(block.id, { title: e.target.value })}
  onClick={(e) => e.preventDefault()}
- className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto"
+ className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold"
  />
  </summary>
  <div className="p-4 bg-white">
- <textarea
- value={block.content || ''}
- placeholder="詳細な内容を入力してください..."
- onChange={(e) => updateBlock(block.id, { content: e.target.value })}
- className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none resize-y focus:border-indigo-400 bg-white text-slate-800 leading-relaxed"
+ <div
+ ref={contentRef}
+ contentEditable
+ suppressContentEditableWarning
+ onClick={handleClick}
+ onFocus={(e) => setLastFocused(block.id, e.currentTarget)}
+ onBlur={handleBlur}
+ className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed [&_img]:max-w-full [&_img]:cursor-pointer empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
+ data-placeholder="詳細なテキストや画像をペーストしてください..."
  />
  </div>
  </details>
@@ -180,8 +221,6 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
 // --- インタラクティブチェスボード (PGN用) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
-
- // ▼ Vercelエラー回避用の型キャスト ▼
  const Board = Chessboard as any;
 
  const parsedGame = useMemo(() => {
@@ -229,7 +268,6 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  
  <div className="flex flex-col items-center">
  <div className="w-full max-w-[400px] mb-4">
- {/* ▼ 型キャストしたBoardコンポーネントを使用 ▼ */}
  <Board 
  position={currentFen} 
  onPieceDrop={onDrop} 
@@ -263,7 +301,6 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
 
 // --- 静的チェスボード (FEN用) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
- // ▼ Vercelエラー回避用の型キャスト ▼
  const Board = Chessboard as any;
 
  const safeFen = useMemo(() => {
@@ -299,7 +336,6 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
  <div className="w-full max-w-[400px] mb-4">
- {/* ▼ 型キャストしたBoardコンポーネントを使用 ▼ */}
  <Board position={safeFen} onPieceDrop={onDrop} arePiecesDraggable={true} />
  </div>
 
@@ -576,7 +612,7 @@ export default function MemoApp() {
  </div>
  {block.type === 'embed' && <EmbedBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} pageLength={activeMemo.pages[activePageIndex].length} showBlockMenu={showBlockMenu} setShowBlockMenu={setShowBlockMenu} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
- {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
+ {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} />}
  {block.type === 'interactive-chess' && <InteractiveChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  {block.type === 'static-chess' && <StaticChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  </div>
