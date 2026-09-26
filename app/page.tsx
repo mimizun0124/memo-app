@@ -116,13 +116,7 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  
  <div className="w-full md:w-1/2 flex flex-col items-center">
  <div className="w-full max-w-[400px]">
- <Chessboard 
- id={`interactive-board-${block.id}`}
- position={currentFen}
- arePiecesDraggable={false} 
- customArrows={[]} 
- customSquareStyles={{}} 
- />
+ <Chessboard/>
  </div>
  <div className="flex gap-4 mt-4">
  <button 
@@ -182,13 +176,7 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  削除
  </button>
  <div className="w-full md:w-1/2 max-w-[300px]">
- <Chessboard 
- id={`static-board-${block.id}`}
- position={fenPosition}
- arePiecesDraggable={false}
- customArrows={[]} // 拡張用
- customSquareStyles={{}} // 拡張用
- />
+ <Chessboard/>
  </div>
  <div className="w-full md:w-1/2 flex flex-col gap-2">
  <label className="text-sm font-bold text-slate-700">FEN文字列</label>
@@ -373,7 +361,7 @@ export default function MemoApp() {
  setMemos((prev) =>
  prev.map((m) => {
  if (m.id === activeMemoId) {
- const newPages = [...m.pages, [{ id: Date.now().toString(), type: 'text', content: '' }]];
+ const newPages = [...m.pages, [{ id: Date.now().toString(), type: 'text' as const, content: '' }]];
  return { ...m, pages: newPages, updatedAt: Date.now() };
  }
  return m;
