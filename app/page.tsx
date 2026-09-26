@@ -1,5 +1,4 @@
 "use client";
-// @ts-nocheck
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
@@ -178,9 +177,12 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  );
 };
 
-// --- インタラクティブチェスボード (PGN用・確実に動くバージョン) ---
+// --- インタラクティブチェスボード (PGN用) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
+
+ // ▼ Vercelエラー回避用の型キャスト ▼
+ const Board = Chessboard as any;
 
  const parsedGame = useMemo(() => {
  const g = new Chess();
@@ -227,7 +229,8 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  
  <div className="flex flex-col items-center">
  <div className="w-full max-w-[400px] mb-4">
- <Chessboard 
+ {/* ▼ 型キャストしたBoardコンポーネントを使用 ▼ */}
+ <Board 
  position={currentFen} 
  onPieceDrop={onDrop} 
  arePiecesDraggable={safeIndex === moveHistory.length - 1} 
@@ -258,8 +261,11 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  );
 };
 
-// --- 静的チェスボード (FEN用・確実に動くバージョン) ---
+// --- 静的チェスボード (FEN用) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
+ // ▼ Vercelエラー回避用の型キャスト ▼
+ const Board = Chessboard as any;
+
  const safeFen = useMemo(() => {
  try {
  const g = new Chess();
@@ -293,7 +299,8 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  
  <div className="w-full max-w-[400px] mb-4">
- <Chessboard position={safeFen} onPieceDrop={onDrop} arePiecesDraggable={true} />
+ {/* ▼ 型キャストしたBoardコンポーネントを使用 ▼ */}
+ <Board position={safeFen} onPieceDrop={onDrop} arePiecesDraggable={true} />
  </div>
 
  <details className="flex-1 w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200" open>
