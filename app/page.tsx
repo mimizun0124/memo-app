@@ -86,7 +86,7 @@ const RichTextBlock: React.FC<BlockProps & {
  onInput={handleInput}
  onBlur={handleBlur}
  onKeyDown={handleKeyDown}
- className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
+ className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
  data-placeholder="入力するか '/' でコマンドを表示"
  />
  {showBlockMenu.show && showBlockMenu.blockId === block.id && (
@@ -499,7 +499,6 @@ export default function MemoApp() {
  </div>
 
  <div className="flex-1 overflow-y-auto w-full">
- {/* ▼ 横幅の制限を解除し、画面いっぱいまで使えるように修正 ▼ */}
  <div className="w-full p-8 lg:p-12 pb-32 flex flex-col items-start text-left">
  <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
  <div className="space-y-4 w-full flex flex-col items-start">
