@@ -502,7 +502,8 @@ export default function MemoApp() {
  </div>
 
  <div className="flex-1 overflow-y-auto w-full">
- <div className="max-w-4xl mx-auto p-8 lg:p-12 pb-32 flex flex-col items-start w-full text-left">
+ {/* ▼ mx-auto を削除して左寄せに修正 ▼ */}
+ <div className="max-w-4xl p-8 lg:p-12 pb-32 flex flex-col items-start w-full text-left">
  <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
  <div className="space-y-4 w-full flex flex-col items-start">
  {activeMemo.pages[activePageIndex]?.map((block, index) => (
