@@ -12,7 +12,8 @@ interface Folder {
  name: string;
 }
 
-type BlockType = 'text' | 'accordion' | 'interactive-chess' | 'static-chess';
+// ▼ 新しく 'embed'（埋め込み）タイプを追加 ▼
+type BlockType = 'text' | 'accordion' | 'interactive-chess' | 'static-chess' | 'embed';
 
 export interface BlockItem {
  id: string;
@@ -66,6 +67,24 @@ const RichTextBlock: React.FC<BlockProps & {
  };
 
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+ // ▼ Notionライクな自動変換ロジック ▼
+ const text = e.currentTarget.textContent?.trim() || "";
+
+ // LichessのStudy URLを検知した場合
+ if (text.startsWith("https://lichess.org/study/")) {
+ const embedUrl = text.replace("https://lichess.org/study/", "https://lichess.org/study/embed/");
+ updateBlock(block.id, { type: 'embed', content: embedUrl });
+ return;
+ }
+
+ // LichessのGame URL（単一の試合）を検知した場合
+ if (text.match(/^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}$/)) {
+ const embedUrl = text.replace("https://lichess.org/", "https://lichess.org/embed/game/") + "?theme=auto&bg=auto";
+ updateBlock(block.id, { type: 'embed', content: embedUrl });
+ return;
+ }
+
+ // URL以外なら通常のテキストとして保存
  updateBlock(block.id, { content: e.currentTarget.innerHTML });
  };
 
@@ -87,7 +106,7 @@ const RichTextBlock: React.FC<BlockProps & {
  onBlur={handleBlur}
  onKeyDown={handleKeyDown}
  className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
- data-placeholder="入力するか '/' でコマンドを表示"
+ data-placeholder="入力するか '/' でコマンドを表示 (LichessのURLを貼ると自動で盤面になります)"
  />
  {showBlockMenu.show && showBlockMenu.blockId === block.id && (
  <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
@@ -103,6 +122,25 @@ const RichTextBlock: React.FC<BlockProps & {
  </button>
  </div>
  )}
+ </div>
+ );
+};
+
+// --- URL自動変換用 埋め込み(Embed)ブロック ---
+const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
+ return (
+ <div className="relative group mb-8 w-full text-left flex flex-col items-start gap-4">
+ <button onClick={() => deleteBlock(block.id)} className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ 
+ <div className="w-full max-w-[600px] mb-4">
+ <iframe 
+ src={block.content} 
+ width="100%" 
+ height="400" 
+ frameBorder="0"
+ className="rounded-lg shadow-sm border border-slate-300"
+ ></iframe>
+ </div>
  </div>
  );
 };
@@ -147,7 +185,6 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
  const [game, setGame] = useState(new Chess());
  
- // ▼ 型エラー回避のための強制キャスト ▼
  const Board = Chessboard as any;
 
  const { currentFen, moveHistory } = useMemo(() => {
@@ -167,7 +204,6 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  }
  
  setGame(playGame);
-
  return { currentFen: playGame.fen(), moveHistory: history };
  }, [block.content, currentMoveIndex]);
 
@@ -184,9 +220,7 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  if (move) {
  const newGame = new Chess();
  if (block.content) {
- try {
- newGame.loadPgn(block.content);
- } catch(e) {}
+ try { newGame.loadPgn(block.content); } catch(e) {}
  }
  
  if (currentMoveIndex === moveHistory.length - 1) {
@@ -238,7 +272,6 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [game, setGame] = useState(new Chess());
 
- // ▼ 型エラー回避のための強制キャスト ▼
  const Board = Chessboard as any;
 
  useEffect(() => {
@@ -552,6 +585,8 @@ export default function MemoApp() {
  <div className="absolute -left-10 top-0 opacity-0 group-hover/block:opacity-100 transition-opacity">
  <button onClick={() => setShowBlockMenu({show: true, blockId: block.id})} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">＋</button>
  </div>
+ {/* ▼ EmbedBlock をレンダリング分岐に追加 ▼ */}
+ {block.type === 'embed' && <EmbedBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} pageLength={activeMemo.pages[activePageIndex].length} showBlockMenu={showBlockMenu} setShowBlockMenu={setShowBlockMenu} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
  {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  {block.type === 'interactive-chess' && <InteractiveChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
