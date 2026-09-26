@@ -77,7 +77,7 @@ const RichTextBlock: React.FC<BlockProps & {
  };
 
  return (
- <div className="relative text-left w-full">
+ <div className="relative text-left w-full mb-2">
  <div
  ref={contentRef}
  contentEditable
@@ -96,7 +96,7 @@ const RichTextBlock: React.FC<BlockProps & {
  <span className="text-xl"> </span> アコーディオン
  </button>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'interactive-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50">
- <span className="text-xl"> </span> インタラクティブ盤面 (PGN)
+ <span className="text-xl"> </span> 棋譜解説盤面 (PGN)
  </button>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'static-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50">
  <span className="text-xl"> </span> 自由に動かせる盤面 (FEN)
@@ -110,15 +110,15 @@ const RichTextBlock: React.FC<BlockProps & {
 // --- アコーディオンブロック (動画のようなパッと開閉するスタイル) ---
 const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  return (
- <div className="relative group mb-4 text-left w-full">
+ <div className="relative group mb-6 text-left w-full">
  <button
  onClick={() => deleteBlock(block.id)}
- className="absolute top-2 right-2 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200"
+ className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200"
  >
  削除
  </button>
- <details className="border border-slate-300 bg-white shadow-sm [&_summary::-webkit-details-marker]:hidden">
- <summary className="font-bold cursor-pointer outline-none flex items-center p-3 bg-slate-50 border-b border-slate-200">
+ <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer">
+ <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200">
  <span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span>
  <input
  type="text"
@@ -126,7 +126,7 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  placeholder="タイトルを入力..."
  onChange={(e) => updateBlock(block.id, { title: e.target.value })}
  onClick={(e) => e.preventDefault()}
- className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800"
+ className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto"
  />
  </summary>
  <div className="p-4 bg-white">
@@ -142,7 +142,7 @@ const AccordionBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock 
  );
 };
 
-// --- インタラクティブチェスボード (PGN用・閲覧用) ---
+// --- インタラクティブチェスボード (PGN用・ブログのような縦並び) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
 
@@ -160,23 +160,27 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  useEffect(() => { setCurrentMoveIndex(moveHistory.length - 1); }, [block.content, moveHistory.length]);
 
  return (
- <div className="relative group mb-4 border border-slate-300 p-4 bg-white shadow-sm flex flex-col md:flex-row gap-6 w-full text-left">
- <button onClick={() => deleteBlock(block.id)} className="absolute top-2 right-2 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
- <div className="w-full md:w-1/2 flex flex-col items-center">
- <div className="w-full max-w-[400px]">
+ <div className="relative group mb-8 w-full text-left flex flex-col items-start">
+ <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ 
+ {/* チェス盤本体 (左寄せ) */}
+ <div className="w-full max-w-[400px] mb-4">
  {/* @ts-ignore */}
  <Chessboard position={currentFen} arePiecesDraggable={false} />
  </div>
- <div className="flex gap-4 mt-4">
- <button onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex < 0}>＜ 戻る</button>
- <button onClick={() => setCurrentMoveIndex(prev => Math.min(moveHistory.length - 1, prev + 1))} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex >= moveHistory.length - 1}>進む ＞</button>
+
+ {/* 戻る・進むボタン群 */}
+ <div className="flex gap-4 mb-4 w-full max-w-[400px] justify-center">
+ <button onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex < 0}>＜ 戻る</button>
+ <button onClick={() => setCurrentMoveIndex(prev => Math.min(moveHistory.length - 1, prev + 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={currentMoveIndex >= moveHistory.length - 1}>進む ＞</button>
  </div>
- </div>
- <div className="w-full md:w-1/2 flex flex-col gap-2">
- <label className="text-xs font-bold text-slate-500">PGN入力</label>
- <textarea value={block.content || ''} placeholder="PGNを入力 (例: 1. e4 e5...)" onChange={(e) => updateBlock(block.id, { content: e.target.value })} className="w-full h-24 border border-slate-200 rounded p-2 outline-none focus:border-indigo-400 text-sm font-mono bg-slate-50" />
- <label className="text-xs font-bold text-slate-500 mt-2">棋譜リスト</label>
- <div className="bg-slate-50 p-2 rounded flex-1 min-h-[150px] overflow-y-auto flex flex-wrap gap-1 content-start border border-slate-200">
+
+ {/* エディタ用の入力エリア (ブログ風の見た目を邪魔しないよう薄く配置) */}
+ <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
+ <summary className="cursor-pointer font-bold outline-none"> PGN設定 (エディタ用・タップで開く)</summary>
+ <div className="mt-2 flex flex-col gap-2">
+ <textarea value={block.content || ''} placeholder="PGNを入力 (例: 1. e4 e5...)" onChange={(e) => updateBlock(block.id, { content: e.target.value })} className="w-full h-24 border border-slate-300 rounded p-2 outline-none focus:border-indigo-400 font-mono bg-white text-slate-800" />
+ <div className="bg-white p-2 rounded min-h-[100px] overflow-y-auto flex flex-wrap gap-1 content-start border border-slate-300">
  {moveHistory.map((move, i) => (
  <React.Fragment key={i}>
  {i % 2 === 0 && <span className="font-bold text-slate-400 ml-1 text-sm">{Math.floor(i / 2) + 1}.</span>}
@@ -185,11 +189,12 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  ))}
  </div>
  </div>
+ </details>
  </div>
  );
 };
 
-// --- 静的チェスボード (自由に手動で駒を動かせる・座標に沿う) ---
+// --- 静的チェスボード (自由に手動で駒を動かせる・ブログ風縦並び) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [game, setGame] = useState(new Chess());
 
@@ -204,41 +209,53 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  } catch (e) {}
  }, [block.content]);
 
- // 手動でドラッグして駒を動かしたときの処理
+ // 手動で駒を動かす安全な関数 (弾かれるのを防止)
  function onDrop(sourceSquare: string, targetSquare: string) {
  try {
  const gameCopy = new Chess(game.fen());
- const move = gameCopy.move({
- from: sourceSquare,
- to: targetSquare,
- promotion: "q", // 簡易的に常にクイーンプロモーション
- });
+ let move = null;
+ 
+ // プロモーションを含む動きを安全に試行
+ try {
+ move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+ } catch (err) {
+ move = gameCopy.move({ from: sourceSquare, to: targetSquare });
+ }
 
  if (move) {
  setGame(gameCopy);
- updateBlock(block.id, { content: gameCopy.fen() }); // 動かした結果をテキストエリアに反映
- return true;
+ updateBlock(block.id, { content: gameCopy.fen() });
+ return true; // 成功した場合はtrueを返して駒を定着させる
  }
- } catch (e) {}
- return false;
+ } catch (e) {
+ console.error(e);
+ }
+ return false; // 無効な動きの時は元の場所に戻る
  }
 
  return (
- <div className="relative group mb-4 border border-slate-300 p-4 bg-white shadow-sm flex flex-col md:flex-row gap-6 items-center text-left w-full">
- <button onClick={() => deleteBlock(block.id)} className="absolute top-2 right-2 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
- <div className="w-full md:w-1/2 max-w-[300px]">
+ <div className="relative group mb-8 w-full text-left flex flex-col items-start">
+ <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ 
+ {/* チェス盤本体 (左寄せ) */}
+ <div className="w-full max-w-[400px] mb-4">
  {/* @ts-ignore */}
- <Chessboard position={game.fen()} onPieceDrop={onDrop} />
+ <Chessboard position={game.fen()} onPieceDrop={onDrop} arePiecesDraggable={true} />
  </div>
- <div className="w-full md:w-1/2 flex flex-col gap-2">
- <label className="text-sm font-bold text-slate-700">FEN文字列（連動します）</label>
+
+ {/* エディタ用の入力エリア */}
+ <details className="w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200">
+ <summary className="cursor-pointer font-bold outline-none"> FEN設定 (エディタ用・タップで開く)</summary>
+ <div className="mt-2 flex flex-col gap-2">
+ <label className="text-xs font-bold text-slate-700">FEN文字列（上の盤面と連動しています）</label>
  <textarea
  value={block.content || ''}
- placeholder="FENを入力、または左の盤面を動かしてください"
+ placeholder="FENを入力するか、上の盤面を直接動かしてください"
  onChange={(e) => updateBlock(block.id, { content: e.target.value })}
- className="w-full min-h-[100px] border border-slate-200 rounded p-2 outline-none focus:border-indigo-400 text-sm font-mono bg-slate-50"
+ className="w-full h-24 border border-slate-300 rounded p-2 outline-none focus:border-indigo-400 font-mono bg-white text-slate-800"
  />
  </div>
+ </details>
  </div>
  );
 };
@@ -402,16 +419,16 @@ export default function MemoApp() {
  .sort((a, b) => { if (a.isPinned === b.isPinned) return b.updatedAt - a.updatedAt; return a.isPinned ? -1 : 1; });
 
  return (
- <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800 font-sans">
+ <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans">
  {/* ＝＝＝ 左側ペイン (30%) ＝＝＝ */}
  {isSidebarOpen && (
- <div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-white relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
+ <div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
  {leftView === "folders" && (
  <>
- <div className="p-6 pb-4 border-b border-slate-100 flex justify-between items-center bg-white/80 backdrop-blur-sm sticky top-0"><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">フォルダ</h1></div>
+ <div className="p-6 pb-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 sticky top-0"><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">フォルダ</h1></div>
  <div className="flex-1 overflow-y-auto p-4 space-y-2">
  {folders.map((folder) => (
- <div key={folder.id} onClick={() => { setActiveFolderId(folder.id); setLeftView("list"); setSearchQuery(""); }} className="p-3.5 bg-white rounded-xl shadow-sm border border-slate-100 cursor-pointer flex justify-between items-center group transition-all hover:shadow-md hover:border-indigo-100 hover:bg-indigo-50/30">
+ <div key={folder.id} onClick={() => { setActiveFolderId(folder.id); setLeftView("list"); setSearchQuery(""); }} className="p-3.5 bg-white rounded-xl shadow-sm border border-slate-200 cursor-pointer flex justify-between items-center group transition-all hover:shadow-md hover:border-indigo-200 hover:bg-indigo-50/50">
  <span className="font-semibold flex items-center gap-3 text-slate-700"><span className="text-xl"> </span> {folder.name}</span>
  <div className="flex items-center gap-3">
  <span className="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-1 rounded-md">{memos.filter(m => folder.id === "default" ? true : m.folderId === folder.id).length}</span>
@@ -426,7 +443,7 @@ export default function MemoApp() {
 
  {leftView === "list" && (
  <>
- <div className="p-4 flex flex-col gap-3 border-b border-slate-100 bg-white sticky top-0 z-10">
+ <div className="p-4 flex flex-col gap-3 border-b border-slate-200 bg-slate-50 sticky top-0 z-10">
  <div className="flex items-center justify-between gap-2">
  <button onClick={() => setLeftView("folders")} className="text-indigo-600 font-bold py-1 pr-2 hover:opacity-70 flex items-center gap-1"> 戻る</button>
  <h1 className="text-base font-extrabold flex-1 text-center truncate text-slate-800">{folders.find(f => f.id === activeFolderId)?.name}</h1>
@@ -434,16 +451,16 @@ export default function MemoApp() {
  </div>
  <div className="relative">
  <span className="absolute left-3 top-2.5 text-slate-400 text-sm"> </span>
- <input type="text" placeholder="検索..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-50 border border-slate-200 text-slate-700 pl-8 pr-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-medium" />
+ <input type="text" placeholder="検索..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-300 text-slate-700 pl-8 pr-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-medium" />
  </div>
  </div>
  <div className="flex-1 overflow-y-auto p-3 space-y-2 relative">
  {displayMemos.length === 0 && <div className="text-center text-slate-400 mt-12 text-sm font-medium">メモがありません</div>}
  {displayMemos.map((memo) => (
- <div key={memo.id} onMouseDown={() => handlePressStart(memo.id)} onMouseUp={handlePressEndOrCancel} onMouseLeave={handlePressEndOrCancel} onTouchStart={() => handlePressStart(memo.id)} onTouchEnd={handlePressEndOrCancel} onTouchMove={handlePressEndOrCancel} onContextMenu={(e) => { e.preventDefault(); setMenuTargetMemoId(memo.id); }} onClick={() => { if (isLongPress.current) { isLongPress.current = false; return; } setActiveMemoId(memo.id); setActivePageIndex(0); }} className={`p-3.5 rounded-xl shadow-sm cursor-pointer border transition-all ${activeMemoId === memo.id ? "bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200" : "bg-white border-slate-100 hover:border-slate-300 hover:shadow-md"}`}>
+ <div key={memo.id} onMouseDown={() => handlePressStart(memo.id)} onMouseUp={handlePressEndOrCancel} onMouseLeave={handlePressEndOrCancel} onTouchStart={() => handlePressStart(memo.id)} onTouchEnd={handlePressEndOrCancel} onTouchMove={handlePressEndOrCancel} onContextMenu={(e) => { e.preventDefault(); setMenuTargetMemoId(memo.id); }} onClick={() => { if (isLongPress.current) { isLongPress.current = false; return; } setActiveMemoId(memo.id); setActivePageIndex(0); }} className={`p-3.5 rounded-xl shadow-sm cursor-pointer border transition-all ${activeMemoId === memo.id ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200" : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-md"}`}>
  <div className="font-extrabold text-slate-800 text-[15px] truncate flex items-center gap-1.5">{memo.isPinned && <span className="text-sm"> </span>} {memo.title || "無題のメモ"}</div>
  <div className="text-slate-500 text-xs truncate mt-1.5 font-medium">{memo.pages[0]?.find(b => b.type === 'text')?.content.replace(/<[^>]*>?/gm, '') || "追加テキストなし"}</div>
- <div className="flex justify-between items-center mt-3"><div className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded">{new Date(memo.updatedAt).toLocaleDateString()}</div></div>
+ <div className="flex justify-between items-center mt-3"><div className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{new Date(memo.updatedAt).toLocaleDateString()}</div></div>
  </div>
  ))}
  </div>
@@ -454,7 +471,7 @@ export default function MemoApp() {
  )}
 
  {/* ＝＝＝ 右側ペイン (70% or 100%) ＝＝＝ */}
- <div className="flex-1 flex flex-col bg-slate-50 relative transition-all duration-300">
+ <div className="flex-1 flex flex-col bg-white relative transition-all duration-300">
  {!activeMemo && (
  <div className="absolute top-4 left-4 z-10">
  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 px-4 bg-white hover:bg-slate-50 rounded-xl shadow-sm border border-slate-200 text-slate-600 font-bold text-sm transition-all flex items-center gap-2 hover:shadow">{isSidebarOpen ? " リストを閉じる" : " リストを開く"}</button>
@@ -485,11 +502,11 @@ export default function MemoApp() {
  </div>
 
  <div className="flex-1 overflow-y-auto w-full">
- <div className="max-w-4xl mx-auto p-8 lg:p-12 pb-32 flex flex-col items-start w-full">
+ <div className="max-w-4xl mx-auto p-8 lg:p-12 pb-32 flex flex-col items-start w-full text-left">
  <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
- <div className="space-y-4 w-full">
+ <div className="space-y-4 w-full flex flex-col items-start">
  {activeMemo.pages[activePageIndex]?.map((block, index) => (
- <div key={block.id} className="relative group/block w-full">
+ <div key={block.id} className="relative group/block w-full flex flex-col items-start">
  <div className="absolute -left-10 top-0 opacity-0 group-hover/block:opacity-100 transition-opacity">
  <button onClick={() => setShowBlockMenu({show: true, blockId: block.id})} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">＋</button>
  </div>
