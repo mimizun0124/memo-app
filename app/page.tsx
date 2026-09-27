@@ -128,20 +128,79 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; showBlockMenu: 
  );
 };
 
-const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => (
- <div className="relative group mb-8 w-full text-left flex flex-col items-start gap-4">
- <button onClick={() => deleteBlock(block.id)} className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
- <div className="w-full max-w-[600px] mb-4"><iframe src={block.content} width="100%" height="400" frameBorder="0" className="rounded-lg shadow-sm border border-slate-300"></iframe></div>
- </div>
-);
+// ▼▼▼ ここから長押し削除対応のブロック ▼▼▼
 
+// --- URL自動変換用 埋め込み(Embed)ブロック ---
+const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
+ const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+ const handleTouchStart = (e: React.TouchEvent) => {
+ const target = e.target as HTMLElement;
+ // iframe内部は検知できないため、外側の枠での長押しを想定
+ if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+ 
+ timerRef.current = setTimeout(() => {
+ if (window.confirm("この埋め込みブロックを削除しますか？")) {
+ deleteBlock(block.id);
+ }
+ }, 800);
+ };
+
+ const handleTouchEnd = () => {
+ if (timerRef.current) {
+ clearTimeout(timerRef.current);
+ timerRef.current = null;
+ }
+ };
+
+ return (
+ <div 
+ className="relative group mb-8 w-full text-left flex flex-col items-start gap-4"
+ onTouchStart={handleTouchStart}
+ onTouchEnd={handleTouchEnd}
+ onTouchMove={handleTouchEnd}
+ >
+ <button onClick={() => deleteBlock(block.id)} className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ <div className="w-full max-w-[600px] mb-4"><iframe src={block.content} width="100%" height="400" frameBorder="0" className="rounded-lg shadow-sm border border-slate-300 pointer-events-auto"></iframe></div>
+ </div>
+ );
+};
+
+// --- アコーディオンブロック ---
 const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: HTMLElement) => void; }> = ({ block, updateBlock, deleteBlock, onImageSelect, setLastFocused }) => {
  const contentRef = useRef<HTMLDivElement>(null);
+ const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
  useEffect(() => { if (contentRef.current && contentRef.current.innerHTML !== block.content) { contentRef.current.innerHTML = block.content || ''; } }, [block.content]);
  const handleClick = (e: React.MouseEvent) => { const target = e.target as HTMLElement; if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); } };
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => { updateBlock(block.id, { content: e.currentTarget.innerHTML }); };
+
+ const handleTouchStart = (e: React.TouchEvent) => {
+ const target = e.target as HTMLElement;
+ // テキスト編集などの入力中は長押し削除を無効化
+ if (target.isContentEditable || target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+ 
+ timerRef.current = setTimeout(() => {
+ if (window.confirm("このアコーディオンブロックを削除しますか？")) {
+ deleteBlock(block.id);
+ }
+ }, 800);
+ };
+
+ const handleTouchEnd = () => {
+ if (timerRef.current) {
+ clearTimeout(timerRef.current);
+ timerRef.current = null;
+ }
+ };
+
  return (
- <div className="relative group mb-6 text-left w-full">
+ <div 
+ className="relative group mb-6 text-left w-full"
+ onTouchStart={handleTouchStart}
+ onTouchEnd={handleTouchEnd}
+ onTouchMove={handleTouchEnd}
+ >
  <button onClick={() => deleteBlock(block.id)} className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
@@ -151,6 +210,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  );
 };
 
+// --- インタラクティブチェスボード (PGN用) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
  const Board = Chessboard as any;
@@ -158,16 +218,45 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  const moveHistory = parsedGame.history();
  const safeIndex = Math.min(currentMoveIndex, moveHistory.length - 1);
  const currentFen = useMemo(() => { const g = new Chess(); for (let i = 0; i <= safeIndex; i++) { g.move(moveHistory[i]); } return g.fen(); }, [moveHistory, safeIndex]);
+ const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
  useEffect(() => { setCurrentMoveIndex(moveHistory.length - 1); }, [moveHistory.length]);
+ 
  function onDrop(sourceSquare: string, targetSquare: string) {
  if (safeIndex !== moveHistory.length - 1) return false;
  try { const g = new Chess(currentFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { parsedGame.move(move); updateBlock(block.id, { content: parsedGame.pgn() }); return true; } } catch (e) {} return false;
  }
+
+ const handleTouchStart = (e: React.TouchEvent) => {
+ const target = e.target as HTMLElement;
+ // 盤面の上（駒を触る操作）や入力エリアの長押しは除外
+ if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('[data-no-delete="true"]')) return;
+ 
+ timerRef.current = setTimeout(() => {
+ if (window.confirm("このチェス盤ブロックを削除しますか？")) {
+ deleteBlock(block.id);
+ }
+ }, 800);
+ };
+
+ const handleTouchEnd = () => {
+ if (timerRef.current) {
+ clearTimeout(timerRef.current);
+ timerRef.current = null;
+ }
+ };
+
  return (
- <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4">
+ <div 
+ className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4"
+ onTouchStart={handleTouchStart}
+ onTouchEnd={handleTouchEnd}
+ onTouchMove={handleTouchEnd}
+ >
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
  <div className="flex flex-col items-center">
- <div className="w-full max-w-[400px] mb-4"><Board position={currentFen} onPieceDrop={onDrop} arePiecesDraggable={safeIndex === moveHistory.length - 1} /></div>
+ {/* data-no-delete="true" を追加して盤面上の誤爆を防ぐ */}
+ <div className="w-full max-w-[400px] mb-4" data-no-delete="true"><Board position={currentFen} onPieceDrop={onDrop} arePiecesDraggable={safeIndex === moveHistory.length - 1} /></div>
  <div className="flex gap-4 mb-4 w-full max-w-[400px] justify-center">
  <button onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={safeIndex < 0}>＜ 戻る</button>
  <button onClick={() => setCurrentMoveIndex(prev => Math.min(moveHistory.length - 1, prev + 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={safeIndex >= moveHistory.length - 1}>進む ＞</button>
@@ -191,16 +280,45 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  );
 };
 
+// --- 静的チェスボード (FEN用) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const Board = Chessboard as any;
  const safeFen = useMemo(() => { try { const g = new Chess(); if (block.content && block.content !== 'start') { g.load(block.content); return g.fen(); } return 'start'; } catch (e) { return 'start'; } }, [block.content]);
+ const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
  function onDrop(sourceSquare: string, targetSquare: string) {
  try { const g = new Chess(); if (safeFen !== 'start') g.load(safeFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { updateBlock(block.id, { content: g.fen() }); return true; } } catch (e) {} return false;
  }
+
+ const handleTouchStart = (e: React.TouchEvent) => {
+ const target = e.target as HTMLElement;
+ // 盤面の上（駒を触る操作）や入力エリアの長押しは除外
+ if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('[data-no-delete="true"]')) return;
+ 
+ timerRef.current = setTimeout(() => {
+ if (window.confirm("このチェス盤ブロックを削除しますか？")) {
+ deleteBlock(block.id);
+ }
+ }, 800);
+ };
+
+ const handleTouchEnd = () => {
+ if (timerRef.current) {
+ clearTimeout(timerRef.current);
+ timerRef.current = null;
+ }
+ };
+
  return (
- <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4">
+ <div 
+ className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4"
+ onTouchStart={handleTouchStart}
+ onTouchEnd={handleTouchEnd}
+ onTouchMove={handleTouchEnd}
+ >
  <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
- <div className="w-full max-w-[400px] mb-4"><Board position={safeFen} onPieceDrop={onDrop} arePiecesDraggable={true} /></div>
+ {/* data-no-delete="true" を追加して盤面上の誤爆を防ぐ */}
+ <div className="w-full max-w-[400px] mb-4" data-no-delete="true"><Board position={safeFen} onPieceDrop={onDrop} arePiecesDraggable={true} /></div>
  <details className="flex-1 w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200" open>
  <summary className="cursor-pointer font-bold outline-none"> FEN設定 (エディタ用・タップで開く)</summary>
  <div className="mt-2 flex flex-col gap-2">
@@ -211,6 +329,8 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  </div>
  );
 };
+// ▲▲▲ ここまで長押し削除対応のブロック ▲▲▲
+
 
 // ==========================================
 // 3. メインアプリケーション
@@ -219,7 +339,7 @@ export default function MemoApp() {
  const [isLoaded, setIsLoaded] = useState<boolean>(false);
  const [folders, setFolders] = useState<Folder[]>([]);
  const [memos, setMemos] = useState<MemoItem[]>([]);
- 
+
  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
  const [leftView, setLeftView] = useState<"folders" | "list">("folders");
  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -240,12 +360,12 @@ export default function MemoApp() {
  try {
  const savedFolders = await getSyncData("smartnotes_folders_v3");
  const savedMemos = await getSyncData("smartnotes_memos_v3");
- 
+
  if (savedFolders) setFolders(savedFolders as Folder[]);
  else setFolders([{ id: "default", name: "すべてのメモ" }]);
- 
+
  if (savedMemos) setMemos(savedMemos as MemoItem[]);
- 
+
  setIsLoaded(true);
  } catch (err) {
  console.error("データの同期読み込みエラー:", err);
