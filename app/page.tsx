@@ -316,12 +316,14 @@ export default function MemoApp() {
  const currentY = e.touches[0].clientY;
  const diffY = currentY - touchStartY.current;
 
+ // 下方向に50px以上スワイプされた時
  if (diffY > 50) {
  const activeEl = document.activeElement as HTMLElement;
+ // 入力要素にフォーカスが当たっていれば、フォーカスを外してキーボードを閉じる
  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
  activeEl.blur();
  }
- touchStartY.current = null;
+ touchStartY.current = null; // 連続発火を防ぐためリセット
  }
  };
 
@@ -411,7 +413,70 @@ export default function MemoApp() {
  })); 
  };
 
- // ▼ 新規追加：ブロックを上下に移動する機能 ▼
+ // ▼ 新規追加：カーソル位置でブロックを分割してアコーディオンを挿入する処理 ▼
+ const handleInsertBlockAtCursor = (type: BlockType) => {
+ const selection = window.getSelection();
+ // カーソルが当たっていない場合は一番最後に追加
+ if (!selection || selection.rangeCount === 0 || !lastFocusedBlockRef.current) {
+ handleAddBlock(lastFocusedBlockRef.current?.id || null, type);
+ return;
+ }
+
+ const el = lastFocusedBlockRef.current.element;
+ const blockId = lastFocusedBlockRef.current.id;
+
+ // 選択範囲が本当に今見ているブロック内かチェック
+ if (!el.contains(selection.anchorNode)) {
+ handleAddBlock(blockId, type);
+ return;
+ }
+
+ // テキストブロック以外の場所（すでにアコーディオンの中など）で押された場合は下に追加
+ const activeBlockType = memos.find(m => m.id === activeMemoId)?.pages[activePageIndex]?.find(b => b.id === blockId)?.type;
+ if (activeBlockType !== 'text') {
+ handleAddBlock(blockId, type);
+ return;
+ }
+
+ // カーソル位置に目印（マーカー）を埋め込む
+ const range = selection.getRangeAt(0);
+ const marker = `__SPLIT_MARKER_${Date.now()}__`;
+ const markerNode = document.createTextNode(marker);
+ range.insertNode(markerNode);
+
+ // ブロックの中身を目印で2つに割る
+ const rawHtml = el.innerHTML;
+ const parts = rawHtml.split(marker);
+ markerNode.remove(); // 念のためマーカーを消去
+
+ const beforeHtml = parts[0] || '';
+ const afterHtml = parts[1] || '';
+
+ const newTargetBlock: BlockItem = { id: Date.now().toString() + '-1', type, content: '', title: type === 'accordion' ? '' : undefined };
+ const afterTextBlock: BlockItem = { id: Date.now().toString() + '-2', type: 'text', content: afterHtml };
+
+ setMemos((prev) => prev.map((m) => {
+ if (m.id === activeMemoId) {
+ const newPages = [...m.pages];
+ const pageBlocks = [...newPages[activePageIndex]];
+ const index = pageBlocks.findIndex(b => b.id === blockId);
+ 
+ if (index !== -1) {
+ // 元のブロックは前半部分だけにする
+ pageBlocks[index] = { ...pageBlocks[index], content: beforeHtml };
+ // アコーディオンと後半部分のテキストブロックを間に割り込ませる
+ pageBlocks.splice(index + 1, 0, newTargetBlock, afterTextBlock);
+ } else {
+ pageBlocks.push(newTargetBlock);
+ }
+ newPages[activePageIndex] = pageBlocks;
+ return { ...m, pages: newPages, updatedAt: Date.now() };
+ }
+ return m;
+ }));
+ };
+
+ // ▼ ブロックを上下に移動する機能 ▼
  const handleMoveBlock = (blockId: string, direction: 'up' | 'down') => {
  setMemos((prev) => prev.map((m) => {
  if (m.id === activeMemoId) {
@@ -566,10 +631,10 @@ export default function MemoApp() {
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
  
- {/* アコーディオン追加ボタン */}
+ {/* ▼ アコーディオン追加ボタン（カーソル位置で分割して追加） ▼ */}
  <button 
  onMouseDown={(e) => e.preventDefault()} 
- onClick={() => handleAddBlock(lastFocusedBlockRef.current?.id || null, 'accordion')} 
+ onClick={() => handleInsertBlockAtCursor('accordion')} 
  className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm"
  >
  アコーディオン
@@ -620,7 +685,7 @@ export default function MemoApp() {
  )}
  </div>
 
- {/* ▼ グローバルな画像リサイザー ▼ */}
+ {/* ▼ 新規追加：グローバルな画像リサイザー ▼ */}
  {activeImage && (
  <ImageResizer 
  image={activeImage} 
