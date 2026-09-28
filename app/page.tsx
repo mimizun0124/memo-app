@@ -4,7 +4,17 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
-import { getSyncData, setSyncData } from './actions'; // 追加：裏方ファイルの読み込み
+import { getSyncData, setSyncData } from './actions';
+
+// ==========================================
+// 新規追加：URLの自動リンク化ユーティリティ
+// ==========================================
+const linkifyText = (text: string) => {
+ const urlRegex = /(?<!href="|src=")(https?:\/\/[^\s<]+)/g;
+ return text.replace(urlRegex, (url) => {
+ return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: underline; cursor: pointer;">${url}</a>`;
+ });
+};
 
 // ==========================================
 // 新規追加：画像リサイズ用オーバーレイコンポーネント
@@ -100,108 +110,84 @@ export interface BlockProps { block: BlockItem; updateBlock: (id: string, update
 // ==========================================
 // 2. カスタムブロックコンポーネント群
 // ==========================================
-const RichTextBlock: React.FC<BlockProps & { pageLength: number; showBlockMenu: { show: boolean, blockId: string | null }; setShowBlockMenu: (val: { show: boolean, blockId: string | null }) => void; setLastFocused: (id: string, el: HTMLElement) => void; handleAddBlock: (afterId: string | null, type: BlockType) => void; }> = ({ block, updateBlock, deleteBlock, onImageSelect, pageLength, showBlockMenu, setShowBlockMenu, setLastFocused, handleAddBlock }) => {
+const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused: (id: string, el: HTMLElement) => void; handleAddBlock: (afterId: string | null, type: BlockType) => void; }> = ({ block, updateBlock, deleteBlock, onImageSelect, pageLength, setLastFocused, handleAddBlock }) => {
  const contentRef = useRef<HTMLDivElement>(null);
- useEffect(() => { if (contentRef.current && contentRef.current.innerHTML !== block.content) { contentRef.current.innerHTML = block.content; } }, [block.content]);
- const handleClick = (e: React.MouseEvent) => { const target = e.target as HTMLElement; if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); } };
- const handleInput = (e: React.FormEvent<HTMLDivElement>) => { const text = e.currentTarget.textContent || ""; if (text === '/') { setShowBlockMenu({ show: true, blockId: block.id }); } else { setShowBlockMenu({ show: false, blockId: null }); } };
+ 
+ useEffect(() => { 
+ if (contentRef.current && contentRef.current.innerHTML !== block.content) { 
+ contentRef.current.innerHTML = block.content; 
+ } 
+ }, [block.content]);
+
+ const handleClick = (e: React.MouseEvent) => { 
+ const target = e.target as HTMLElement; 
+ if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); }
+ if (target.tagName === 'A') {
+ const url = target.getAttribute('href');
+ if (url) window.open(url, '_blank', 'noopener,noreferrer');
+ }
+ };
+
+ // ▼ 「/」コマンドに関する処理を完全に削除しました ▼
+
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
  const text = e.currentTarget.textContent?.trim() || "";
  if (text.startsWith("https://lichess.org/study/")) { updateBlock(block.id, { type: 'embed', content: text.replace("https://lichess.org/study/", "https://lichess.org/study/embed/") }); return; }
  if (text.match(/^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}$/)) { updateBlock(block.id, { type: 'embed', content: text.replace("https://lichess.org/", "https://lichess.org/embed/game/") + "?theme=auto&bg=auto" }); return; }
- updateBlock(block.id, { content: e.currentTarget.innerHTML });
+ 
+ const linkedHtml = linkifyText(e.currentTarget.innerHTML);
+ updateBlock(block.id, { content: linkedHtml });
  };
- const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => { if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } };
+
+ const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => { 
+ if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
+ };
 
  return (
  <div className="relative text-left w-full mb-2">
- <div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onInput={handleInput} onBlur={handleBlur} onKeyDown={handleKeyDown} className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 [&_img]:max-w-full [&_img]:cursor-pointer" data-placeholder="入力するか '/' でコマンドを表示 (LichessのURLや画像をペースト可能)" />
- {showBlockMenu.show && showBlockMenu.blockId === block.id && (
- <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
- <div className="p-2 text-xs font-bold text-slate-400 bg-slate-50 border-b border-slate-100">ブロックを追加</div>
- <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'accordion')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors"><span className="text-xl"> </span> アコーディオン</button>
- <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'interactive-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50"><span className="text-xl"> </span> 棋譜解説盤面 (PGN)</button>
- <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleAddBlock(block.id, 'static-chess')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 flex items-center gap-3 font-semibold text-slate-700 transition-colors border-t border-slate-50"><span className="text-xl"> </span> 自由に動かせる盤面 (FEN)</button>
- </div>
- )}
+ <div 
+ ref={contentRef} 
+ contentEditable 
+ suppressContentEditableWarning 
+ onClick={handleClick} 
+ onFocus={(e) => setLastFocused(block.id, e.currentTarget)} 
+ onBlur={handleBlur} 
+ onKeyDown={handleKeyDown} 
+ className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 [&_img]:max-w-full [&_img]:cursor-pointer" 
+ data-placeholder="テキストを入力 (URLや画像をペースト可能)" 
+ />
  </div>
  );
 };
 
-// ▼▼▼ ここから長押し削除対応のブロック ▼▼▼
-
-// --- URL自動変換用 埋め込み(Embed)ブロック ---
 const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
- const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- // iframe内部は検知できないため、外側の枠での長押しを想定
- if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("この埋め込みブロックを削除しますか？")) {
- deleteBlock(block.id);
- }
- }, 800);
- };
-
- const handleTouchEnd = () => {
- if (timerRef.current) {
- clearTimeout(timerRef.current);
- timerRef.current = null;
- }
- };
-
  return (
- <div 
- className="relative group mb-8 w-full text-left flex flex-col items-start gap-4"
- onTouchStart={handleTouchStart}
- onTouchEnd={handleTouchEnd}
- onTouchMove={handleTouchEnd}
- >
- <button onClick={() => deleteBlock(block.id)} className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ <div className="relative group mb-8 w-full text-left flex flex-col items-start gap-4 mt-6">
+ <button onClick={() => { if(window.confirm("この埋め込みブロックを削除しますか？")) deleteBlock(block.id); }} className="absolute -top-10 right-0 z-10 bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg shadow-sm hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm flex items-center gap-1"><span className="text-lg"> </span> 削除</button>
  <div className="w-full max-w-[600px] mb-4"><iframe src={block.content} width="100%" height="400" frameBorder="0" className="rounded-lg shadow-sm border border-slate-300 pointer-events-auto"></iframe></div>
  </div>
  );
 };
 
-// --- アコーディオンブロック ---
 const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: HTMLElement) => void; }> = ({ block, updateBlock, deleteBlock, onImageSelect, setLastFocused }) => {
  const contentRef = useRef<HTMLDivElement>(null);
- const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
  useEffect(() => { if (contentRef.current && contentRef.current.innerHTML !== block.content) { contentRef.current.innerHTML = block.content || ''; } }, [block.content]);
- const handleClick = (e: React.MouseEvent) => { const target = e.target as HTMLElement; if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); } };
- const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => { updateBlock(block.id, { content: e.currentTarget.innerHTML }); };
-
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- // テキスト編集などの入力中は長押し削除を無効化
- if (target.isContentEditable || target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
  
- timerRef.current = setTimeout(() => {
- if (window.confirm("このアコーディオンブロックを削除しますか？")) {
- deleteBlock(block.id);
- }
- }, 800);
+ const handleClick = (e: React.MouseEvent) => { 
+ const target = e.target as HTMLElement; 
+ if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); } 
+ if (target.tagName === 'A') { const url = target.getAttribute('href'); if (url) window.open(url, '_blank', 'noopener,noreferrer'); }
  };
-
- const handleTouchEnd = () => {
- if (timerRef.current) {
- clearTimeout(timerRef.current);
- timerRef.current = null;
- }
+ 
+ const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => { 
+ const linkedHtml = linkifyText(e.currentTarget.innerHTML);
+ updateBlock(block.id, { content: linkedHtml }); 
  };
 
  return (
- <div 
- className="relative group mb-6 text-left w-full"
- onTouchStart={handleTouchStart}
- onTouchEnd={handleTouchEnd}
- onTouchMove={handleTouchEnd}
- >
- <button onClick={() => deleteBlock(block.id)} className="absolute -top-3 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ <div className="relative group mb-6 text-left w-full mt-6">
+ <button onClick={() => { if(window.confirm("このアコーディオンを削除しますか？")) deleteBlock(block.id); }} className="absolute -top-10 right-0 z-10 bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg shadow-sm hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm flex items-center gap-1"><span className="text-lg"> </span> 削除</button>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
  <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed [&_img]:max-w-full [&_img]:cursor-pointer empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300" data-placeholder="詳細なテキストや画像をペーストしてください..." /></div>
@@ -210,7 +196,6 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  );
 };
 
-// --- インタラクティブチェスボード (PGN用) ---
 const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
  const Board = Chessboard as any;
@@ -218,7 +203,6 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  const moveHistory = parsedGame.history();
  const safeIndex = Math.min(currentMoveIndex, moveHistory.length - 1);
  const currentFen = useMemo(() => { const g = new Chess(); for (let i = 0; i <= safeIndex; i++) { g.move(moveHistory[i]); } return g.fen(); }, [moveHistory, safeIndex]);
- const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
  useEffect(() => { setCurrentMoveIndex(moveHistory.length - 1); }, [moveHistory.length]);
  
@@ -227,35 +211,10 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  try { const g = new Chess(currentFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { parsedGame.move(move); updateBlock(block.id, { content: parsedGame.pgn() }); return true; } } catch (e) {} return false;
  }
 
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- // 盤面の上（駒を触る操作）や入力エリアの長押しは除外
- if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('[data-no-delete="true"]')) return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("このチェス盤ブロックを削除しますか？")) {
- deleteBlock(block.id);
- }
- }, 800);
- };
-
- const handleTouchEnd = () => {
- if (timerRef.current) {
- clearTimeout(timerRef.current);
- timerRef.current = null;
- }
- };
-
  return (
- <div 
- className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4"
- onTouchStart={handleTouchStart}
- onTouchEnd={handleTouchEnd}
- onTouchMove={handleTouchEnd}
- >
- <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
+ <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4 mt-6">
+ <button onClick={() => { if(window.confirm("このチェス盤(PGN)を削除しますか？")) deleteBlock(block.id); }} className="absolute -top-10 right-0 z-10 bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg shadow-sm hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm flex items-center gap-1"><span className="text-lg"> </span> 削除</button>
  <div className="flex flex-col items-center">
- {/* data-no-delete="true" を追加して盤面上の誤爆を防ぐ */}
  <div className="w-full max-w-[400px] mb-4" data-no-delete="true"><Board position={currentFen} onPieceDrop={onDrop} arePiecesDraggable={safeIndex === moveHistory.length - 1} /></div>
  <div className="flex gap-4 mb-4 w-full max-w-[400px] justify-center">
  <button onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))} className="px-6 py-2 bg-slate-200 hover:bg-slate-300 rounded font-bold text-slate-700 disabled:opacity-50" disabled={safeIndex < 0}>＜ 戻る</button>
@@ -280,44 +239,17 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  );
 };
 
-// --- 静的チェスボード (FEN用) ---
 const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock }) => {
  const Board = Chessboard as any;
  const safeFen = useMemo(() => { try { const g = new Chess(); if (block.content && block.content !== 'start') { g.load(block.content); return g.fen(); } return 'start'; } catch (e) { return 'start'; } }, [block.content]);
- const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
  function onDrop(sourceSquare: string, targetSquare: string) {
  try { const g = new Chess(); if (safeFen !== 'start') g.load(safeFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { updateBlock(block.id, { content: g.fen() }); return true; } } catch (e) {} return false;
  }
 
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- // 盤面の上（駒を触る操作）や入力エリアの長押しは除外
- if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('[data-no-delete="true"]')) return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("このチェス盤ブロックを削除しますか？")) {
- deleteBlock(block.id);
- }
- }, 800);
- };
-
- const handleTouchEnd = () => {
- if (timerRef.current) {
- clearTimeout(timerRef.current);
- timerRef.current = null;
- }
- };
-
  return (
- <div 
- className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4"
- onTouchStart={handleTouchStart}
- onTouchEnd={handleTouchEnd}
- onTouchMove={handleTouchEnd}
- >
- <button onClick={() => deleteBlock(block.id)} className="absolute top-0 right-0 z-10 hidden group-hover:block bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">削除</button>
- {/* data-no-delete="true" を追加して盤面上の誤爆を防ぐ */}
+ <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4 mt-6">
+ <button onClick={() => { if(window.confirm("このチェス盤(FEN)を削除しますか？")) deleteBlock(block.id); }} className="absolute -top-10 right-0 z-10 bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg shadow-sm hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm flex items-center gap-1"><span className="text-lg"> </span> 削除</button>
  <div className="w-full max-w-[400px] mb-4" data-no-delete="true"><Board position={safeFen} onPieceDrop={onDrop} arePiecesDraggable={true} /></div>
  <details className="flex-1 w-full max-w-[600px] text-sm text-slate-500 [&_summary::-webkit-details-marker]:hidden bg-slate-50 p-2 rounded border border-slate-200" open>
  <summary className="cursor-pointer font-bold outline-none"> FEN設定 (エディタ用・タップで開く)</summary>
@@ -329,8 +261,6 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  </div>
  );
 };
-// ▲▲▲ ここまで長押し削除対応のブロック ▲▲▲
-
 
 // ==========================================
 // 3. メインアプリケーション
@@ -352,9 +282,34 @@ export default function MemoApp() {
  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
  const isLongPress = useRef<boolean>(false);
  const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
- const [showBlockMenu, setShowBlockMenu] = useState<{ show: boolean, blockId: string | null }>({ show: false, blockId: null });
 
- // ▼ 変更1: アプリ起動時に「共通の金庫(Redis)」からデータを読み込む ▼
+ // ▼ 新規追加：スワイプダウン（下スクロール）でキーボードを閉じる処理 ▼
+ const touchStartY = useRef<number | null>(null);
+
+ const handleGlobalTouchStart = (e: React.TouchEvent) => {
+ touchStartY.current = e.touches[0].clientY;
+ };
+
+ const handleGlobalTouchMove = (e: React.TouchEvent) => {
+ if (touchStartY.current === null) return;
+ const currentY = e.touches[0].clientY;
+ const diffY = currentY - touchStartY.current;
+
+ // 下方向に50px以上スワイプされた時
+ if (diffY > 50) {
+ const activeEl = document.activeElement as HTMLElement;
+ // 入力要素にフォーカスが当たっていれば、フォーカスを外してキーボードを閉じる
+ if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+ activeEl.blur();
+ }
+ touchStartY.current = null; // 連続発火を防ぐためリセット
+ }
+ };
+
+ const handleGlobalTouchEnd = () => {
+ touchStartY.current = null;
+ };
+
  useEffect(() => {
  const fetchAllData = async () => {
  try {
@@ -376,7 +331,6 @@ export default function MemoApp() {
  fetchAllData();
  }, []);
 
- // ▼ 変更2: 変更があるたびに「共通の金庫(Redis)」に自動保存する ▼
  useEffect(() => {
  if (!isLoaded) return;
  const saveFolders = async () => {
@@ -400,11 +354,59 @@ export default function MemoApp() {
 
  const handleCreateMemo = () => { const newMemo: MemoItem = { id: Date.now().toString(), folderId: activeFolderId || "default", title: "", pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]], isPinned: false, updatedAt: Date.now(), }; setMemos([newMemo, ...memos]); setActiveMemoId(newMemo.id); setActivePageIndex(0); setIsSidebarOpen(true); };
  const updateActiveMemo = (updates: Partial<MemoItem>) => { setMemos((prev) => prev.map((m) => (m.id === activeMemoId ? { ...m, ...updates, updatedAt: Date.now() } : m))); };
- const handleUpdateBlock = (blockId: string, updates: Partial<BlockItem>) => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; const pageBlocks = [...newPages[activePageIndex]]; const blockIndex = pageBlocks.findIndex(b => b.id === blockId); if (blockIndex !== -1) { pageBlocks[blockIndex] = { ...pageBlocks[blockIndex], ...updates }; newPages[activePageIndex] = pageBlocks; return { ...m, pages: newPages, updatedAt: Date.now() }; } } return m; })); };
+ 
+ const handleUpdateBlock = (blockId: string, updates: Partial<BlockItem>) => { 
+ setMemos((prev) => prev.map((m) => { 
+ if (m.id === activeMemoId) { 
+ const newPages = [...m.pages]; 
+ const pageBlocks = [...newPages[activePageIndex]]; 
+ const blockIndex = pageBlocks.findIndex(b => b.id === blockId); 
+ if (blockIndex !== -1) { 
+ pageBlocks[blockIndex] = { ...pageBlocks[blockIndex], ...updates }; 
+ newPages[activePageIndex] = pageBlocks; 
+ return { ...m, pages: newPages, updatedAt: Date.now() }; 
+ } 
+ } 
+ return m; 
+ })); 
+ };
+ 
  const handleDeleteBlock = (blockId: string) => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; newPages[activePageIndex] = newPages[activePageIndex].filter(b => b.id !== blockId); if (newPages[activePageIndex].length === 0) newPages[activePageIndex] = [{ id: Date.now().toString(), type: 'text', content: '' }]; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); };
- const handleAddBlock = (afterBlockId: string | null, type: BlockType) => { const newBlock: BlockItem = { id: Date.now().toString(), type, content: '', title: type === 'accordion' ? '' : undefined }; setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; const pageBlocks = [...newPages[activePageIndex]]; if (afterBlockId === null) pageBlocks.push(newBlock); else { const index = pageBlocks.findIndex(b => b.id === afterBlockId); if (index !== -1) pageBlocks.splice(index + 1, 0, newBlock); else pageBlocks.push(newBlock); } newPages[activePageIndex] = pageBlocks; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); setShowBlockMenu({ show: false, blockId: null }); };
+ 
+ const handleAddBlock = (afterBlockId: string | null, type: BlockType) => { 
+ const newBlock: BlockItem = { id: Date.now().toString(), type, content: '', title: type === 'accordion' ? '' : undefined }; 
+ setMemos((prev) => prev.map((m) => { 
+ if (m.id === activeMemoId) { 
+ const newPages = [...m.pages]; 
+ const pageBlocks = [...newPages[activePageIndex]]; 
+ if (afterBlockId === null) pageBlocks.push(newBlock); 
+ else { 
+ const index = pageBlocks.findIndex(b => b.id === afterBlockId); 
+ if (index !== -1) pageBlocks.splice(index + 1, 0, newBlock); 
+ else pageBlocks.push(newBlock); 
+ } 
+ newPages[activePageIndex] = pageBlocks; 
+ return { ...m, pages: newPages, updatedAt: Date.now() }; 
+ } 
+ return m; 
+ })); 
+ };
+ 
  const applyFormat = (command: string, value?: string) => { document.execCommand(command, false, value); if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); };
  const changeFontSize = (sizePx: string) => { const selection = window.getSelection(); if (!selection || selection.rangeCount === 0) return; const span = document.createElement("span"); span.style.fontSize = `${sizePx}px`; span.textContent = selection.toString(); const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(span); if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); };
+ 
+ const changeFontFamily = (fontFamily: string) => { 
+ const selection = window.getSelection(); 
+ if (!selection || selection.rangeCount === 0) return; 
+ const span = document.createElement("span"); 
+ span.style.fontFamily = fontFamily; 
+ span.textContent = selection.toString(); 
+ const range = selection.getRangeAt(0); 
+ range.deleteContents(); 
+ range.insertNode(span); 
+ if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); 
+ };
+
  const handleDeleteFolder = (folderId: string, e: React.MouseEvent) => { e.stopPropagation(); if (folderId === "default") return; if (window.confirm("このフォルダを削除しますか？\n（中のメモは「すべてのメモ」に移動します）")) { setFolders(prev => prev.filter(f => f.id !== folderId)); setMemos(prev => prev.map(m => m.folderId === folderId ? { ...m, folderId: "default" } : m)); if (activeFolderId === folderId) setActiveFolderId("default"); } };
  const handleAddPage = () => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages, [{ id: Date.now().toString(), type: 'text' as const, content: '' }]]; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); setActivePageIndex(activeMemo ? activeMemo.pages.length : 0); };
  const handleDeleteCurrentPage = () => { if (!activeMemo) return; if (activeMemo.pages.length <= 1) { alert("最後のページは削除できません。"); return; } if (window.confirm(`ページ ${activePageIndex + 1} を削除しますか？`)) { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = m.pages.filter((_, idx) => idx !== activePageIndex); return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); setActivePageIndex(prev => (prev > 0 ? prev - 1 : 0)); } };
@@ -419,7 +421,6 @@ export default function MemoApp() {
  .filter((m) => { if (!searchQuery) return true; const q = searchQuery.toLowerCase(); const titleMatch = m.title.toLowerCase().includes(q); const contentMatch = m.pages.some(page => page.some(block => block.content.toLowerCase().includes(q) || (block.title && block.title.toLowerCase().includes(q)))); return titleMatch || contentMatch; })
  .sort((a, b) => { if (a.isPinned === b.isPinned) return b.updatedAt - a.updatedAt; return a.isPinned ? -1 : 1; });
 
- // データを読み込み中の時の画面
  if (!isLoaded) {
  return (
  <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
@@ -503,10 +504,32 @@ export default function MemoApp() {
  <div className="w-px h-4 bg-slate-300"></div>
  <select onChange={(e) => changeFontSize(e.target.value)} className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" defaultValue=""><option value="" disabled>サイズ</option>{[8, 10, 12, 14, 16, 18, 20, 22, 24, 26].map(s => (<option key={s} value={s}>{s}px</option>))}</select>
  <div className="w-px h-4 bg-slate-300"></div>
+ 
+ <select 
+ onChange={(e) => changeFontFamily(e.target.value)} 
+ className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" 
+ defaultValue=""
+ >
+ <option value="" disabled>フォント</option>
+ <option value="'Noto Sans JP', sans-serif">ゴシック</option>
+ <option value="'Noto Serif JP', serif">明朝</option>
+ <option value="'M PLUS Rounded 1c', sans-serif">丸ゴシック</option>
+ <option value="'Zen Kurenaido', sans-serif">手書き風</option>
+ <option value="monospace">等幅 (コード用)</option>
+ </select>
+ 
+ <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
- <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("justifyLeft")} className="px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 font-bold" title="左に揃える">左</button>
- <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("justifyCenter")} className="px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 font-bold" title="中央に揃える">中</button>
+ 
+ {/* ▼ 唯一のアコーディオン追加ボタン ▼ */}
+ <button 
+ onMouseDown={(e) => e.preventDefault()} 
+ onClick={() => handleAddBlock(lastFocusedBlockRef.current?.id || null, 'accordion')} 
+ className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm"
+ >
+ アコーディオン
+ </button>
  </div>
  <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100">
  <button disabled={activePageIndex === 0} onClick={() => setActivePageIndex(p => p - 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors"> 前のページ</button>
@@ -516,17 +539,20 @@ export default function MemoApp() {
  </div>
  </div>
 
- <div className="flex-1 overflow-y-auto w-full relative">
+ {/* ▼ 追加箇所：この領域を下スワイプするとキーボードが閉じる ▼ */}
+ <div 
+ className="flex-1 overflow-y-auto w-full relative"
+ onTouchStart={handleGlobalTouchStart}
+ onTouchMove={handleGlobalTouchMove}
+ onTouchEnd={handleGlobalTouchEnd}
+ >
  <div className="w-full p-8 lg:p-12 pb-32 flex flex-col items-start text-left">
  <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
  <div className="space-y-4 w-full flex flex-col items-start">
  {activeMemo.pages[activePageIndex]?.map((block, index) => (
  <div key={block.id} className="relative group/block w-full flex flex-col items-start">
- <div className="absolute -left-10 top-0 opacity-0 group-hover/block:opacity-100 transition-opacity">
- <button onClick={() => setShowBlockMenu({show: true, blockId: block.id})} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">＋</button>
- </div>
  {block.type === 'embed' && <EmbedBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
- {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} onImageSelect={setActiveImage} pageLength={activeMemo.pages[activePageIndex].length} showBlockMenu={showBlockMenu} setShowBlockMenu={setShowBlockMenu} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
+ {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} onImageSelect={setActiveImage} pageLength={activeMemo.pages[activePageIndex].length} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
  {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} onImageSelect={setActiveImage} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} />}
  {block.type === 'interactive-chess' && <InteractiveChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
  {block.type === 'static-chess' && <StaticChessBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} />}
