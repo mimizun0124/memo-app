@@ -149,7 +149,39 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
  };
 
- // ▼ 変更点：break-all を break-words に変更し、見切れを防ぐ ▼
+ // ▼ 新規追加：PDFファイルのペースト（貼り付け）処理 ▼
+ const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+ const items = e.clipboardData?.items;
+ if (!items) return;
+
+ const target = e.currentTarget;
+
+ for (let i = 0; i < items.length; i++) {
+ if (items[i].type === 'application/pdf') {
+ e.preventDefault();
+ const file = items[i].getAsFile();
+ if (file) {
+ // 容量が大きすぎる場合は警告を出す（Redisの保存上限対策）
+ if (file.size > 2 * 1024 * 1024) { 
+ alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
+ }
+ const reader = new FileReader();
+ reader.onload = (event) => {
+ const base64Pdf = event.target?.result;
+ // PDFを埋め込む枠（誤爆防止のため contenteditable="false" に設定）
+ const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><object data="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></object></div><p><br></p>`;
+ 
+ target.focus();
+ document.execCommand("insertHTML", false, pdfHtml);
+ updateBlock(block.id, { content: target.innerHTML });
+ };
+ reader.readAsDataURL(file);
+ }
+ return; // PDFを見つけたら処理を終了
+ }
+ }
+ };
+
  return (
  <div className="relative text-left w-full mb-2">
  <div 
@@ -160,6 +192,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  onFocus={(e) => setLastFocused(block.id, e.currentTarget)} 
  onBlur={handleBlur} 
  onKeyDown={handleKeyDown} 
+ onPaste={handlePaste} // ←ペーストイベントを追加
  className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" 
  />
  </div>
@@ -195,7 +228,36 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
- // ▼ 変更点：アコーディオン内のテキストにも break-words を追加 ▼
+ // ▼ 新規追加：アコーディオン内でのPDFペースト処理 ▼
+ const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+ const items = e.clipboardData?.items;
+ if (!items) return;
+
+ const target = e.currentTarget;
+
+ for (let i = 0; i < items.length; i++) {
+ if (items[i].type === 'application/pdf') {
+ e.preventDefault();
+ const file = items[i].getAsFile();
+ if (file) {
+ if (file.size > 2 * 1024 * 1024) { 
+ alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
+ }
+ const reader = new FileReader();
+ reader.onload = (event) => {
+ const base64Pdf = event.target?.result;
+ const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><object data="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></object></div><p><br></p>`;
+ target.focus();
+ document.execCommand("insertHTML", false, pdfHtml);
+ updateBlock(block.id, { content: target.innerHTML });
+ };
+ reader.readAsDataURL(file);
+ }
+ return; 
+ }
+ }
+ };
+
  return (
  <div className="relative group mb-6 text-left w-full mt-8">
  <div className="absolute -top-11 right-0 z-10 flex items-center gap-1.5">
@@ -205,7 +267,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  </div>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
- <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
+ <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} onPaste={handlePaste} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
  </details>
  </div>
  );
@@ -529,7 +591,7 @@ export default function MemoApp() {
  const handlePressStart = (memoId: string) => { isLongPress.current = false; longPressTimer.current = setTimeout(() => { setMenuTargetMemoId(memoId); isLongPress.current = true; }, 600); };
  const handlePressEndOrCancel = () => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } };
  const handleTogglePin = (memoId: string) => { setMemos((prev) => prev.map((m) => (m.id === memoId ? { ...m, isPinned: !m.isPinned } : m))); setMenuTargetMemoId(null); };
- const handleDeleteMemo = (memoId: string) => { if (window.confirm("このメモを削除しますか？")) { setMemos((prev) => prev.filter((m) => m.id !== memoId)); if (activeMemoId === memoId) { setActiveMemoId(null); setActivePageIndex(0); setIsSidebarOpen(true); } } setMenuTargetMemoId(null); };
+ const handleDeleteMemo = (memoId: string) => { if (window.confirm("このメモを削除しますか？")) { setMemos((prev) => prev.filter((m) => m.id !== memoId)); if (activeMemoId === memoId) { setActiveMemoId(null); setActivePageIndex(0); setIsSidebarOpen(isMobile ? false : true); } } setMenuTargetMemoId(null); };
 
  const activeMemo = memos.find((m) => m.id === activeMemoId);
  const displayMemos = memos
@@ -547,7 +609,7 @@ export default function MemoApp() {
 
  return (
  <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans relative">
- {/* ＝＝＝ 左側ペイン ＝＝＝ */}
+ {/* ＝＝＝ 左側ペイン (スマホ時はisSidebarOpenがtrueの時のみ全画面表示、PC/iPad時は左30%) ＝＝＝ */}
  {isSidebarOpen && (
  <div className={`${isMobile ? 'w-full absolute inset-0 z-30' : 'w-[30%] min-w-[280px] max-w-[400px] border-r'} border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)]`}>
  {leftView === "folders" && (
@@ -597,7 +659,7 @@ export default function MemoApp() {
  </div>
  )}
 
- {/* ＝＝＝ 右側ペイン (メモ画面) ▼ 変更点：min-w-0 を追加して見切れを防ぐ ▼ ＝＝＝ */}
+ {/* ＝＝＝ 右側ペイン (メモ画面) ＝＝＝ */}
  <div className={`${(isMobile && isSidebarOpen) ? 'hidden' : 'flex-1 min-w-0'} flex flex-col bg-white relative transition-all duration-300`}>
  
  {!activeMemo && !isMobile && (
@@ -635,13 +697,13 @@ export default function MemoApp() {
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
  
- {/* アコーディオン追加ボタン */}
+ {/* アコーディオン追加ボタン（カーソル位置） */}
  <button 
  onMouseDown={(e) => e.preventDefault()} 
  onClick={() => handleInsertBlockAtCursor('accordion')} 
  className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm whitespace-nowrap"
  >
- アコデオン
+ アコーディオン
  </button>
  </div>
  <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100 min-w-max">
