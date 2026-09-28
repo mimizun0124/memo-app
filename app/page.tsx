@@ -149,6 +149,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
  };
 
+ // ▼ 変更点：break-all を break-words に変更し、見切れを防ぐ ▼
  return (
  <div className="relative text-left w-full mb-2">
  <div 
@@ -159,7 +160,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  onFocus={(e) => setLastFocused(block.id, e.currentTarget)} 
  onBlur={handleBlur} 
  onKeyDown={handleKeyDown} 
- className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-all whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" 
+ className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" 
  />
  </div>
  );
@@ -194,6 +195,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
+ // ▼ 変更点：アコーディオン内のテキストにも break-words を追加 ▼
  return (
  <div className="relative group mb-6 text-left w-full mt-8">
  <div className="absolute -top-11 right-0 z-10 flex items-center gap-1.5">
@@ -203,7 +205,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  </div>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
- <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
+ <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
  </details>
  </div>
  );
@@ -291,9 +293,7 @@ export default function MemoApp() {
  const [folders, setFolders] = useState<Folder[]>([]);
  const [memos, setMemos] = useState<MemoItem[]>([]);
 
- // スマホ画面判定用state
  const [isMobile, setIsMobile] = useState<boolean>(false);
- // サイドバーを開いているかどうか
  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
  const [leftView, setLeftView] = useState<"folders" | "list">("folders");
@@ -308,24 +308,21 @@ export default function MemoApp() {
  const isLongPress = useRef<boolean>(false);
  const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
 
- // 画面幅に応じてisMobileを判定
  useEffect(() => {
  const checkMobile = () => {
  setIsMobile(window.innerWidth < 768);
  };
- checkMobile(); // 初期チェック
+ checkMobile();
  window.addEventListener('resize', checkMobile);
  return () => window.removeEventListener('resize', checkMobile);
  }, []);
 
- // スマホの場合、メモを開いたら自動でサイドバーを閉じる
  useEffect(() => {
  if (isMobile && activeMemoId) {
  setIsSidebarOpen(false);
  }
  }, [activeMemoId, isMobile]);
 
- // ▼ スワイプダウン（下スクロール）でキーボードを閉じる処理 ▼
  const touchStartY = useRef<number | null>(null);
 
  const handleGlobalTouchStart = (e: React.TouchEvent) => {
@@ -337,7 +334,6 @@ export default function MemoApp() {
  const currentY = e.touches[0].clientY;
  const diffY = currentY - touchStartY.current;
 
- // 下方向に50px以上スワイプされた時
  if (diffY > 50) {
  const activeEl = document.activeElement as HTMLElement;
  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
@@ -414,7 +410,6 @@ export default function MemoApp() {
  
  const handleDeleteBlock = (blockId: string) => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; newPages[activePageIndex] = newPages[activePageIndex].filter(b => b.id !== blockId); if (newPages[activePageIndex].length === 0) newPages[activePageIndex] = [{ id: Date.now().toString(), type: 'text', content: '' }]; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); };
  
- // ▼ カーソル位置でブロックを分割して追加する処理 ▼
  const handleInsertBlockAtCursor = (type: BlockType) => {
  const selection = window.getSelection();
  if (!selection || selection.rangeCount === 0 || !lastFocusedBlockRef.current) {
@@ -552,8 +547,7 @@ export default function MemoApp() {
 
  return (
  <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans relative">
- 
- {/* ＝＝＝ 左側ペイン (スマホ時はisSidebarOpenがtrueの時のみ全画面表示、PC/iPad時は左30%) ＝＝＝ */}
+ {/* ＝＝＝ 左側ペイン ＝＝＝ */}
  {isSidebarOpen && (
  <div className={`${isMobile ? 'w-full absolute inset-0 z-30' : 'w-[30%] min-w-[280px] max-w-[400px] border-r'} border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)]`}>
  {leftView === "folders" && (
@@ -603,8 +597,8 @@ export default function MemoApp() {
  </div>
  )}
 
- {/* ＝＝＝ 右側ペイン (メモ画面) ＝＝＝ */}
- <div className={`${(isMobile && isSidebarOpen) ? 'hidden' : 'flex-1'} flex flex-col bg-white relative transition-all duration-300 w-full`}>
+ {/* ＝＝＝ 右側ペイン (メモ画面) ▼ 変更点：min-w-0 を追加して見切れを防ぐ ▼ ＝＝＝ */}
+ <div className={`${(isMobile && isSidebarOpen) ? 'hidden' : 'flex-1 min-w-0'} flex flex-col bg-white relative transition-all duration-300`}>
  
  {!activeMemo && !isMobile && (
  <div className="absolute top-4 left-4 z-10">
@@ -622,7 +616,7 @@ export default function MemoApp() {
  <div className="flex items-center text-sm font-bold text-slate-500 gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"> <span className="hidden sm:inline">移動先:</span> <select value={activeMemo.folderId || "default"} onChange={(e) => updateActiveMemo({ folderId: e.target.value })} className="bg-transparent font-extrabold outline-none cursor-pointer max-w-[100px] sm:max-w-[120px] truncate text-slate-800">{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select></div>
  </div>
 
- {/* ▼ ツールバー (スマホでは横スクロール可能に) ▼ */}
+ {/* 装飾ツールバー ＆ ページ切り替え */}
  <div className="flex items-center justify-between px-4 lg:px-6 pb-3 overflow-x-auto gap-4">
  <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 min-w-max">
  <input type="color" onChange={(e) => applyFormat("foreColor", e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" title="文字色" />
