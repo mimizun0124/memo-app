@@ -291,7 +291,11 @@ export default function MemoApp() {
  const [folders, setFolders] = useState<Folder[]>([]);
  const [memos, setMemos] = useState<MemoItem[]>([]);
 
+ // スマホ画面判定用state
+ const [isMobile, setIsMobile] = useState<boolean>(false);
+ // サイドバーを開いているかどうか
  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+
  const [leftView, setLeftView] = useState<"folders" | "list">("folders");
  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
  const [activeMemoId, setActiveMemoId] = useState<string | null>(null);
@@ -304,7 +308,24 @@ export default function MemoApp() {
  const isLongPress = useRef<boolean>(false);
  const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
 
- // ▼ 新規追加：スワイプダウン（下スクロール）でキーボードを閉じる処理 ▼
+ // 画面幅に応じてisMobileを判定
+ useEffect(() => {
+ const checkMobile = () => {
+ setIsMobile(window.innerWidth < 768);
+ };
+ checkMobile(); // 初期チェック
+ window.addEventListener('resize', checkMobile);
+ return () => window.removeEventListener('resize', checkMobile);
+ }, []);
+
+ // スマホの場合、メモを開いたら自動でサイドバーを閉じる
+ useEffect(() => {
+ if (isMobile && activeMemoId) {
+ setIsSidebarOpen(false);
+ }
+ }, [activeMemoId, isMobile]);
+
+ // ▼ スワイプダウン（下スクロール）でキーボードを閉じる処理 ▼
  const touchStartY = useRef<number | null>(null);
 
  const handleGlobalTouchStart = (e: React.TouchEvent) => {
@@ -319,11 +340,10 @@ export default function MemoApp() {
  // 下方向に50px以上スワイプされた時
  if (diffY > 50) {
  const activeEl = document.activeElement as HTMLElement;
- // 入力要素にフォーカスが当たっていれば、フォーカスを外してキーボードを閉じる
  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
  activeEl.blur();
  }
- touchStartY.current = null; // 連続発火を防ぐためリセット
+ touchStartY.current = null;
  }
  };
 
@@ -373,7 +393,7 @@ export default function MemoApp() {
  document.addEventListener('mousedown', handleGlobalClick); return () => document.removeEventListener('mousedown', handleGlobalClick);
  }, [activeImage]);
 
- const handleCreateMemo = () => { const newMemo: MemoItem = { id: Date.now().toString(), folderId: activeFolderId || "default", title: "", pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]], isPinned: false, updatedAt: Date.now(), }; setMemos([newMemo, ...memos]); setActiveMemoId(newMemo.id); setActivePageIndex(0); setIsSidebarOpen(true); };
+ const handleCreateMemo = () => { const newMemo: MemoItem = { id: Date.now().toString(), folderId: activeFolderId || "default", title: "", pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]], isPinned: false, updatedAt: Date.now(), }; setMemos([newMemo, ...memos]); setActiveMemoId(newMemo.id); setActivePageIndex(0); setIsSidebarOpen(isMobile ? false : true); };
  const updateActiveMemo = (updates: Partial<MemoItem>) => { setMemos((prev) => prev.map((m) => (m.id === activeMemoId ? { ...m, ...updates, updatedAt: Date.now() } : m))); };
  
  const handleUpdateBlock = (blockId: string, updates: Partial<BlockItem>) => { 
@@ -394,6 +414,62 @@ export default function MemoApp() {
  
  const handleDeleteBlock = (blockId: string) => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; newPages[activePageIndex] = newPages[activePageIndex].filter(b => b.id !== blockId); if (newPages[activePageIndex].length === 0) newPages[activePageIndex] = [{ id: Date.now().toString(), type: 'text', content: '' }]; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); };
  
+ // ▼ カーソル位置でブロックを分割して追加する処理 ▼
+ const handleInsertBlockAtCursor = (type: BlockType) => {
+ const selection = window.getSelection();
+ if (!selection || selection.rangeCount === 0 || !lastFocusedBlockRef.current) {
+ handleAddBlock(lastFocusedBlockRef.current?.id || null, type);
+ return;
+ }
+
+ const el = lastFocusedBlockRef.current.element;
+ const blockId = lastFocusedBlockRef.current.id;
+
+ if (!el.contains(selection.anchorNode)) {
+ handleAddBlock(blockId, type);
+ return;
+ }
+
+ const activeBlockType = memos.find(m => m.id === activeMemoId)?.pages[activePageIndex]?.find(b => b.id === blockId)?.type;
+ if (activeBlockType !== 'text') {
+ handleAddBlock(blockId, type);
+ return;
+ }
+
+ const range = selection.getRangeAt(0);
+ const marker = `__SPLIT_MARKER_${Date.now()}__`;
+ const markerNode = document.createTextNode(marker);
+ range.insertNode(markerNode);
+
+ const rawHtml = el.innerHTML;
+ const parts = rawHtml.split(marker);
+ markerNode.remove();
+
+ const beforeHtml = parts[0] || '';
+ const afterHtml = parts[1] || '';
+
+ const newTargetBlock: BlockItem = { id: Date.now().toString() + '-1', type, content: '', title: type === 'accordion' ? '' : undefined };
+ const afterTextBlock: BlockItem = { id: Date.now().toString() + '-2', type: 'text', content: afterHtml };
+
+ setMemos((prev) => prev.map((m) => {
+ if (m.id === activeMemoId) {
+ const newPages = [...m.pages];
+ const pageBlocks = [...newPages[activePageIndex]];
+ const index = pageBlocks.findIndex(b => b.id === blockId);
+ 
+ if (index !== -1) {
+ pageBlocks[index] = { ...pageBlocks[index], content: beforeHtml };
+ pageBlocks.splice(index + 1, 0, newTargetBlock, afterTextBlock);
+ } else {
+ pageBlocks.push(newTargetBlock);
+ }
+ newPages[activePageIndex] = pageBlocks;
+ return { ...m, pages: newPages, updatedAt: Date.now() };
+ }
+ return m;
+ }));
+ };
+
  const handleAddBlock = (afterBlockId: string | null, type: BlockType) => { 
  const newBlock: BlockItem = { id: Date.now().toString(), type, content: '', title: type === 'accordion' ? '' : undefined }; 
  setMemos((prev) => prev.map((m) => { 
@@ -413,70 +489,6 @@ export default function MemoApp() {
  })); 
  };
 
- // ▼ 新規追加：カーソル位置でブロックを分割してアコーディオンを挿入する処理 ▼
- const handleInsertBlockAtCursor = (type: BlockType) => {
- const selection = window.getSelection();
- // カーソルが当たっていない場合は一番最後に追加
- if (!selection || selection.rangeCount === 0 || !lastFocusedBlockRef.current) {
- handleAddBlock(lastFocusedBlockRef.current?.id || null, type);
- return;
- }
-
- const el = lastFocusedBlockRef.current.element;
- const blockId = lastFocusedBlockRef.current.id;
-
- // 選択範囲が本当に今見ているブロック内かチェック
- if (!el.contains(selection.anchorNode)) {
- handleAddBlock(blockId, type);
- return;
- }
-
- // テキストブロック以外の場所（すでにアコーディオンの中など）で押された場合は下に追加
- const activeBlockType = memos.find(m => m.id === activeMemoId)?.pages[activePageIndex]?.find(b => b.id === blockId)?.type;
- if (activeBlockType !== 'text') {
- handleAddBlock(blockId, type);
- return;
- }
-
- // カーソル位置に目印（マーカー）を埋め込む
- const range = selection.getRangeAt(0);
- const marker = `__SPLIT_MARKER_${Date.now()}__`;
- const markerNode = document.createTextNode(marker);
- range.insertNode(markerNode);
-
- // ブロックの中身を目印で2つに割る
- const rawHtml = el.innerHTML;
- const parts = rawHtml.split(marker);
- markerNode.remove(); // 念のためマーカーを消去
-
- const beforeHtml = parts[0] || '';
- const afterHtml = parts[1] || '';
-
- const newTargetBlock: BlockItem = { id: Date.now().toString() + '-1', type, content: '', title: type === 'accordion' ? '' : undefined };
- const afterTextBlock: BlockItem = { id: Date.now().toString() + '-2', type: 'text', content: afterHtml };
-
- setMemos((prev) => prev.map((m) => {
- if (m.id === activeMemoId) {
- const newPages = [...m.pages];
- const pageBlocks = [...newPages[activePageIndex]];
- const index = pageBlocks.findIndex(b => b.id === blockId);
- 
- if (index !== -1) {
- // 元のブロックは前半部分だけにする
- pageBlocks[index] = { ...pageBlocks[index], content: beforeHtml };
- // アコーディオンと後半部分のテキストブロックを間に割り込ませる
- pageBlocks.splice(index + 1, 0, newTargetBlock, afterTextBlock);
- } else {
- pageBlocks.push(newTargetBlock);
- }
- newPages[activePageIndex] = pageBlocks;
- return { ...m, pages: newPages, updatedAt: Date.now() };
- }
- return m;
- }));
- };
-
- // ▼ ブロックを上下に移動する機能 ▼
  const handleMoveBlock = (blockId: string, direction: 'up' | 'down') => {
  setMemos((prev) => prev.map((m) => {
  if (m.id === activeMemoId) {
@@ -522,7 +534,7 @@ export default function MemoApp() {
  const handlePressStart = (memoId: string) => { isLongPress.current = false; longPressTimer.current = setTimeout(() => { setMenuTargetMemoId(memoId); isLongPress.current = true; }, 600); };
  const handlePressEndOrCancel = () => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } };
  const handleTogglePin = (memoId: string) => { setMemos((prev) => prev.map((m) => (m.id === memoId ? { ...m, isPinned: !m.isPinned } : m))); setMenuTargetMemoId(null); };
- const handleDeleteMemo = (memoId: string) => { if (window.confirm("このメモを削除しますか？")) { setMemos((prev) => prev.filter((m) => m.id !== memoId)); if (activeMemoId === memoId) { setActiveMemoId(null); setActivePageIndex(0); } } setMenuTargetMemoId(null); };
+ const handleDeleteMemo = (memoId: string) => { if (window.confirm("このメモを削除しますか？")) { setMemos((prev) => prev.filter((m) => m.id !== memoId)); if (activeMemoId === memoId) { setActiveMemoId(null); setActivePageIndex(0); setIsSidebarOpen(true); } } setMenuTargetMemoId(null); };
 
  const activeMemo = memos.find((m) => m.id === activeMemoId);
  const displayMemos = memos
@@ -540,9 +552,10 @@ export default function MemoApp() {
 
  return (
  <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans relative">
- {/* ＝＝＝ 左側ペイン (30%) ＝＝＝ */}
+ 
+ {/* ＝＝＝ 左側ペイン (スマホ時はisSidebarOpenがtrueの時のみ全画面表示、PC/iPad時は左30%) ＝＝＝ */}
  {isSidebarOpen && (
- <div className="w-[30%] min-w-[280px] max-w-[400px] border-r border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-20">
+ <div className={`${isMobile ? 'w-full absolute inset-0 z-30' : 'w-[30%] min-w-[280px] max-w-[400px] border-r'} border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)]`}>
  {leftView === "folders" && (
  <>
  <div className="p-6 pb-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 sticky top-0"><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">フォルダ</h1></div>
@@ -577,7 +590,7 @@ export default function MemoApp() {
  <div className="flex-1 overflow-y-auto p-3 space-y-2 relative">
  {displayMemos.length === 0 && <div className="text-center text-slate-400 mt-12 text-sm font-medium">メモがありません</div>}
  {displayMemos.map((memo) => (
- <div key={memo.id} onMouseDown={() => handlePressStart(memo.id)} onMouseUp={handlePressEndOrCancel} onMouseLeave={handlePressEndOrCancel} onTouchStart={() => handlePressStart(memo.id)} onTouchEnd={handlePressEndOrCancel} onTouchMove={handlePressEndOrCancel} onContextMenu={(e) => { e.preventDefault(); setMenuTargetMemoId(memo.id); }} onClick={() => { if (isLongPress.current) { isLongPress.current = false; return; } setActiveMemoId(memo.id); setActivePageIndex(0); }} className={`p-3.5 rounded-xl shadow-sm cursor-pointer border transition-all ${activeMemoId === memo.id ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200" : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-md"}`}>
+ <div key={memo.id} onMouseDown={() => handlePressStart(memo.id)} onMouseUp={handlePressEndOrCancel} onMouseLeave={handlePressEndOrCancel} onTouchStart={() => handlePressStart(memo.id)} onTouchEnd={handlePressEndOrCancel} onTouchMove={handlePressEndOrCancel} onContextMenu={(e) => { e.preventDefault(); setMenuTargetMemoId(memo.id); }} onClick={() => { if (isLongPress.current) { isLongPress.current = false; return; } setActiveMemoId(memo.id); setActivePageIndex(0); if(isMobile) setIsSidebarOpen(false); }} className={`p-3.5 rounded-xl shadow-sm cursor-pointer border transition-all ${activeMemoId === memo.id ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200" : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-md"}`}>
  <div className="font-extrabold text-slate-800 text-[15px] truncate flex items-center gap-1.5">{memo.isPinned && <span className="text-sm"> </span>} {memo.title || "無題のメモ"}</div>
  <div className="text-slate-500 text-xs truncate mt-1.5 font-medium">{memo.pages[0]?.find(b => b.type === 'text')?.content.replace(/<[^>]*>?/gm, '') || "追加テキストなし"}</div>
  <div className="flex justify-between items-center mt-3"><div className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{new Date(memo.updatedAt).toLocaleDateString()}</div></div>
@@ -590,9 +603,10 @@ export default function MemoApp() {
  </div>
  )}
 
- {/* ＝＝＝ 右側ペイン (70% or 100%) ＝＝＝ */}
- <div className="flex-1 flex flex-col bg-white relative transition-all duration-300">
- {!activeMemo && (
+ {/* ＝＝＝ 右側ペイン (メモ画面) ＝＝＝ */}
+ <div className={`${(isMobile && isSidebarOpen) ? 'hidden' : 'flex-1'} flex flex-col bg-white relative transition-all duration-300 w-full`}>
+ 
+ {!activeMemo && !isMobile && (
  <div className="absolute top-4 left-4 z-10">
  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 px-4 bg-white hover:bg-slate-50 rounded-xl shadow-sm border border-slate-200 text-slate-600 font-bold text-sm transition-all flex items-center gap-2 hover:shadow">{isSidebarOpen ? " リストを閉じる" : " リストを開く"}</button>
  </div>
@@ -601,24 +615,21 @@ export default function MemoApp() {
  {activeMemo ? (
  <>
  <div className="flex flex-col bg-white border-b border-slate-200 shadow-sm z-10 sticky top-0">
- <div className="flex items-center justify-between p-3 px-6">
- <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 px-3 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 text-slate-600 font-bold text-sm transition-colors flex items-center gap-2">{isSidebarOpen ? " " : " "}</button>
- <div className="flex items-center text-sm font-bold text-slate-500 gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"> 移動先: <select value={activeMemo.folderId || "default"} onChange={(e) => updateActiveMemo({ folderId: e.target.value })} className="bg-transparent font-extrabold outline-none cursor-pointer max-w-[120px] truncate text-slate-800">{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select></div>
+ <div className="flex items-center justify-between p-3 px-4 lg:px-6">
+ <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 px-3 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 text-slate-600 font-bold text-sm transition-colors flex items-center gap-2">
+ {isMobile ? " 戻る" : (isSidebarOpen ? " " : " ")}
+ </button>
+ <div className="flex items-center text-sm font-bold text-slate-500 gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200"> <span className="hidden sm:inline">移動先:</span> <select value={activeMemo.folderId || "default"} onChange={(e) => updateActiveMemo({ folderId: e.target.value })} className="bg-transparent font-extrabold outline-none cursor-pointer max-w-[100px] sm:max-w-[120px] truncate text-slate-800">{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select></div>
  </div>
 
- {/* 装飾ツールバー ＆ ページ切り替え */}
- <div className="flex items-center justify-between px-6 pb-3">
- <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 overflow-x-auto">
+ {/* ▼ ツールバー (スマホでは横スクロール可能に) ▼ */}
+ <div className="flex items-center justify-between px-4 lg:px-6 pb-3 overflow-x-auto gap-4">
+ <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 min-w-max">
  <input type="color" onChange={(e) => applyFormat("foreColor", e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" title="文字色" />
  <div className="w-px h-4 bg-slate-300"></div>
  <select onChange={(e) => changeFontSize(e.target.value)} className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" defaultValue=""><option value="" disabled>サイズ</option>{[8, 10, 12, 14, 16, 18, 20, 22, 24, 26].map(s => (<option key={s} value={s}>{s}px</option>))}</select>
  <div className="w-px h-4 bg-slate-300"></div>
- 
- <select 
- onChange={(e) => changeFontFamily(e.target.value)} 
- className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" 
- defaultValue=""
- >
+ <select onChange={(e) => changeFontFamily(e.target.value)} className="bg-transparent text-sm font-bold outline-none cursor-pointer text-slate-700" defaultValue="">
  <option value="" disabled>フォント</option>
  <option value="'Noto Sans JP', sans-serif">ゴシック</option>
  <option value="'Noto Serif JP', serif">明朝</option>
@@ -626,37 +637,35 @@ export default function MemoApp() {
  <option value="'Zen Kurenaido', sans-serif">手書き風</option>
  <option value="monospace">等幅 (コード用)</option>
  </select>
- 
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
  
- {/* ▼ アコーディオン追加ボタン（カーソル位置で分割して追加） ▼ */}
+ {/* アコーディオン追加ボタン */}
  <button 
  onMouseDown={(e) => e.preventDefault()} 
  onClick={() => handleInsertBlockAtCursor('accordion')} 
- className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm"
+ className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm whitespace-nowrap"
  >
- アコーディオン
+ アコデオン
  </button>
  </div>
- <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100">
- <button disabled={activePageIndex === 0} onClick={() => setActivePageIndex(p => p - 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors"> 前のページ</button>
- <span className="text-sm font-extrabold w-16 text-center text-indigo-900 tracking-widest">{activePageIndex + 1}/{activeMemo.pages.length}</span>
- <button disabled={activePageIndex === activeMemo.pages.length - 1} onClick={() => setActivePageIndex(p => p + 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors">次のページ </button>
+ <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100 min-w-max">
+ <button disabled={activePageIndex === 0} onClick={() => setActivePageIndex(p => p - 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors text-sm"> <span className="hidden sm:inline"> 前</span></button>
+ <span className="text-sm font-extrabold w-12 text-center text-indigo-900 tracking-widest">{activePageIndex + 1}/{activeMemo.pages.length}</span>
+ <button disabled={activePageIndex === activeMemo.pages.length - 1} onClick={() => setActivePageIndex(p => p + 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors text-sm"><span className="hidden sm:inline">次 </span> </button>
  </div>
  </div>
  </div>
 
- {/* ▼ この領域を下スワイプするとキーボードが閉じる ▼ */}
  <div 
  className="flex-1 overflow-y-auto w-full relative"
  onTouchStart={handleGlobalTouchStart}
  onTouchMove={handleGlobalTouchMove}
  onTouchEnd={handleGlobalTouchEnd}
  >
- <div className="w-full p-8 lg:p-12 pb-32 flex flex-col items-start text-left">
- <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-4xl lg:text-5xl font-extrabold w-full outline-none mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
+ <div className="w-full p-4 sm:p-8 lg:p-12 pb-32 flex flex-col items-start text-left">
+ <input type="text" value={activeMemo.title} onChange={(e) => updateActiveMemo({ title: e.target.value })} placeholder="無題のメモ" className="text-3xl sm:text-4xl lg:text-5xl font-extrabold w-full outline-none mb-6 sm:mb-10 bg-transparent placeholder-slate-300 text-slate-900 text-left" />
  <div className="space-y-4 w-full flex flex-col items-start">
  {activeMemo.pages[activePageIndex]?.map((block, index) => (
  <div key={block.id} className="relative group/block w-full flex flex-col items-start">
@@ -672,20 +681,20 @@ export default function MemoApp() {
  </div>
  </div>
 
- <div className="border-t border-slate-200 p-4 px-6 flex justify-between items-center bg-white shadow-[0_-4px_10px_rgba(0,0,0,0.02)] z-10">
- <button onClick={handleDeleteCurrentPage} className="text-red-400 hover:text-red-600 font-bold px-3 py-2 text-sm transition-colors rounded hover:bg-red-50">このページを削除</button>
- <button onClick={handleAddPage} className="bg-indigo-600 text-white hover:bg-indigo-700 font-bold px-6 py-2.5 rounded-xl shadow-md transition-all active:scale-95 text-sm">＋ 次のページを追加</button>
+ <div className="border-t border-slate-200 p-3 sm:p-4 px-4 sm:px-6 flex justify-between items-center bg-white shadow-[0_-4px_10px_rgba(0,0,0,0.02)] z-10">
+ <button onClick={handleDeleteCurrentPage} className="text-red-400 hover:text-red-600 font-bold px-3 py-2 text-xs sm:text-sm transition-colors rounded hover:bg-red-50">このページを削除</button>
+ <button onClick={handleAddPage} className="bg-indigo-600 text-white hover:bg-indigo-700 font-bold px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl shadow-md transition-all active:scale-95 text-xs sm:text-sm">＋ 次のページを追加</button>
  </div>
  </>
  ) : (
  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50">
  <div className="w-24 h-24 mb-6 opacity-20"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg></div>
- <p className="font-bold text-lg text-slate-500">左側のリストからメモを選択するか</p><p className="font-bold text-lg text-slate-500 mt-1">新しく作成してください</p>
+ <p className="font-bold text-base sm:text-lg text-slate-500">左側のリストからメモを選択するか</p><p className="font-bold text-base sm:text-lg text-slate-500 mt-1">新しく作成してください</p>
  </div>
  )}
  </div>
 
- {/* ▼ 新規追加：グローバルな画像リサイザー ▼ */}
+ {/* ▼ グローバルな画像リサイザー ▼ */}
  {activeImage && (
  <ImageResizer 
  image={activeImage} 
@@ -698,8 +707,8 @@ export default function MemoApp() {
  )}
 
  {menuTargetMemoId && (
- <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center transition-all" onClick={() => setMenuTargetMemoId(null)}>
- <div className="bg-white rounded-2xl shadow-2xl w-72 overflow-hidden flex flex-col scale-100 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+ <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center transition-all px-4" onClick={() => setMenuTargetMemoId(null)}>
+ <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[280px] overflow-hidden flex flex-col scale-100 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
  <div className="p-4 border-b border-slate-100 font-extrabold text-slate-800 text-center bg-slate-50/50">メモの操作</div>
  <button onClick={() => handleTogglePin(menuTargetMemoId)} className="p-4 text-left hover:bg-slate-50 transition-colors font-bold border-b border-slate-100 flex items-center gap-3 text-slate-700"><span className="text-xl"> </span>{memos.find(m => m.id === menuTargetMemoId)?.isPinned ? "ピン留めを解除" : "ピン留めする"}</button>
  <button onClick={() => handleDeleteMemo(menuTargetMemoId)} className="p-4 text-left hover:bg-red-50 text-red-600 transition-colors font-bold flex items-center gap-3"><span className="text-xl"> </span>メモを削除する</button>
