@@ -7,7 +7,7 @@ import { Chessboard } from "react-chessboard";
 import { getSyncData, setSyncData } from './actions';
 
 // ==========================================
-// 新規追加：URLの自動リンク化ユーティリティ
+// URLの自動リンク化ユーティリティ
 // ==========================================
 const linkifyText = (text: string) => {
  const urlRegex = /(?<!href="|src=")(https?:\/\/[^\s<]+)/g;
@@ -17,7 +17,7 @@ const linkifyText = (text: string) => {
 };
 
 // ==========================================
-// 新規追加：画像リサイズ用オーバーレイコンポーネント
+// 画像リサイズ用オーバーレイコンポーネント
 // ==========================================
 const ImageResizer = ({ image, onResizeEnd }: { image: HTMLImageElement, onResizeEnd: () => void }) => {
  const [rect, setRect] = useState(() => image.getBoundingClientRect());
@@ -105,8 +105,6 @@ interface Folder { id: string; name: string; }
 type BlockType = 'text' | 'accordion' | 'interactive-chess' | 'static-chess' | 'embed';
 export interface BlockItem { id: string; type: BlockType; title?: string; content: string; }
 interface MemoItem { id: string; folderId: string | null; title: string; pages: BlockItem[][]; isPinned: boolean; updatedAt: number; }
-
-// ▼ 変更点：上下移動のための機能をPropsに追加 ▼
 export interface BlockProps { 
  block: BlockItem; 
  updateBlock: (id: string, updates: Partial<BlockItem>) => void; 
@@ -120,7 +118,7 @@ export interface BlockProps {
 // ==========================================
 // 2. カスタムブロックコンポーネント群
 // ==========================================
-const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused: (id: string, el: HTMLElement) => void; handleAddBlock: (afterId: string | null, type: BlockType) => void; }> = ({ block, updateBlock, deleteBlock, onImageSelect, pageLength, setLastFocused, handleAddBlock }) => {
+const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused: (id: string, el: HTMLElement) => void; handleAddBlock: (afterId: string | null, type: BlockType) => void; }> = ({ block, updateBlock, deleteBlock, moveBlock, isFirst, isLast, onImageSelect, pageLength, setLastFocused, handleAddBlock }) => {
  const contentRef = useRef<HTMLDivElement>(null);
  
  useEffect(() => { 
@@ -151,7 +149,6 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
  };
 
- // ▼ 変更点：邪魔だった「テキストを入力...」というプレースホルダー文字と関連する設定を完全に削除 ▼
  return (
  <div className="relative text-left w-full mb-2">
  <div 
@@ -169,29 +166,12 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
 };
 
 const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock, moveBlock, isFirst, isLast }) => {
- const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("この埋め込みブロックを削除しますか？")) { deleteBlock(block.id); }
- }, 800);
- };
-
- const handleTouchEnd = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
-
  return (
- <div 
- className="relative group mb-8 w-full text-left flex flex-col items-start gap-4 mt-8"
- onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchMove={handleTouchEnd}
- >
- {/* ▼ 変更点：移動ボタン（↑↓）を追加 ▼ */}
+ <div className="relative group mb-8 w-full text-left flex flex-col items-start gap-4 mt-8">
  <div className="absolute -top-11 right-0 z-10 flex items-center gap-1.5">
  <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↑</button>
  <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↓</button>
- <button onClick={() => { if(window.confirm("この埋め込みブロックを削除しますか？")) deleteBlock(block.id); }} className="bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg shadow-sm hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm flex items-center gap-1"><span className="text-lg"> </span> 削除</button>
+ <button onClick={() => { if(window.confirm("このブロックを削除しますか？")) deleteBlock(block.id); }} className="bg-white border border-red-200 text-red-500 px-3 py-1.5 rounded-lg shadow-sm hover:bg-red-50 hover:text-red-600 transition-all font-bold text-sm flex items-center gap-1"><span className="text-lg"> </span> 削除</button>
  </div>
  <div className="w-full max-w-[600px] mb-4"><iframe src={block.content} width="100%" height="400" frameBorder="0" className="rounded-lg shadow-sm border border-slate-300 pointer-events-auto"></iframe></div>
  </div>
@@ -214,23 +194,8 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- if (target.isContentEditable || target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("このアコーディオンブロックを削除しますか？")) { deleteBlock(block.id); }
- }, 800);
- };
-
- const handleTouchEnd = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
-
  return (
- <div 
- className="relative group mb-6 text-left w-full mt-8"
- onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchMove={handleTouchEnd}
- >
- {/* ▼ 変更点：移動ボタン（↑↓）を追加 ▼ */}
+ <div className="relative group mb-6 text-left w-full mt-8">
  <div className="absolute -top-11 right-0 z-10 flex items-center gap-1.5">
  <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↑</button>
  <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↓</button>
@@ -238,7 +203,6 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  </div>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
- {/* ▼ 変更点：アコーディオン内のプレースホルダーも削除 ▼ */}
  <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
  </details>
  </div>
@@ -260,23 +224,8 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  try { const g = new Chess(currentFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { parsedGame.move(move); updateBlock(block.id, { content: parsedGame.pgn() }); return true; } } catch (e) {} return false;
  }
 
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('[data-no-delete="true"]')) return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("このチェス盤ブロックを削除しますか？")) { deleteBlock(block.id); }
- }, 800);
- };
-
- const handleTouchEnd = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
-
  return (
- <div 
- className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4 mt-8"
- onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchMove={handleTouchEnd}
- >
- {/* ▼ 変更点：移動ボタン（↑↓）を追加 ▼ */}
+ <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4 mt-8">
  <div className="absolute -top-11 right-0 z-10 flex items-center gap-1.5">
  <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↑</button>
  <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↓</button>
@@ -315,23 +264,8 @@ const StaticChessBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBloc
  try { const g = new Chess(); if (safeFen !== 'start') g.load(safeFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { updateBlock(block.id, { content: g.fen() }); return true; } } catch (e) {} return false;
  }
 
- const handleTouchStart = (e: React.TouchEvent) => {
- const target = e.target as HTMLElement;
- if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('[data-no-delete="true"]')) return;
- 
- timerRef.current = setTimeout(() => {
- if (window.confirm("このチェス盤ブロックを削除しますか？")) { deleteBlock(block.id); }
- }, 800);
- };
-
- const handleTouchEnd = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
-
  return (
- <div 
- className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4 mt-8"
- onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchMove={handleTouchEnd}
- >
- {/* ▼ 変更点：移動ボタン（↑↓）を追加 ▼ */}
+ <div className="relative group mb-8 w-full text-left flex flex-col md:flex-row items-start gap-4 mt-8">
  <div className="absolute -top-11 right-0 z-10 flex items-center gap-1.5">
  <button onClick={() => moveBlock(block.id, 'up')} disabled={isFirst} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↑</button>
  <button onClick={() => moveBlock(block.id, 'down')} disabled={isLast} className="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 transition-all font-bold disabled:opacity-30 text-sm">↓</button>
@@ -382,14 +316,12 @@ export default function MemoApp() {
  const currentY = e.touches[0].clientY;
  const diffY = currentY - touchStartY.current;
 
- // 下方向に50px以上スワイプされた時
  if (diffY > 50) {
  const activeEl = document.activeElement as HTMLElement;
- // 入力要素にフォーカスが当たっていれば、フォーカスを外してキーボードを閉じる
  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
  activeEl.blur();
  }
- touchStartY.current = null; // 連続発火を防ぐためリセット
+ touchStartY.current = null;
  }
  };
 
@@ -663,7 +595,6 @@ export default function MemoApp() {
  <div className="space-y-4 w-full flex flex-col items-start">
  {activeMemo.pages[activePageIndex]?.map((block, index) => (
  <div key={block.id} className="relative group/block w-full flex flex-col items-start">
- {/* 各ブロックに moveBlock などの操作を渡す */}
  {block.type === 'embed' && <EmbedBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} moveBlock={handleMoveBlock} isFirst={index === 0} isLast={index === activeMemo.pages[activePageIndex].length - 1} />}
  {block.type === 'text' && <RichTextBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} moveBlock={handleMoveBlock} isFirst={index === 0} isLast={index === activeMemo.pages[activePageIndex].length - 1} onImageSelect={setActiveImage} pageLength={activeMemo.pages[activePageIndex].length} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} handleAddBlock={handleAddBlock} />}
  {block.type === 'accordion' && <AccordionBlock block={block} updateBlock={handleUpdateBlock} deleteBlock={handleDeleteBlock} moveBlock={handleMoveBlock} isFirst={index === 0} isLast={index === activeMemo.pages[activePageIndex].length - 1} onImageSelect={setActiveImage} setLastFocused={(id, el) => { lastFocusedBlockRef.current = { id, element: el }; }} />}
@@ -689,7 +620,7 @@ export default function MemoApp() {
  )}
  </div>
 
- {/* ▼ 新規追加：グローバルな画像リサイザー ▼ */}
+ {/* ▼ グローバルな画像リサイザー ▼ */}
  {activeImage && (
  <ImageResizer 
  image={activeImage} 
