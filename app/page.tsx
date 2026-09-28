@@ -149,36 +149,54 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
  };
 
- // ▼ 新規追加：PDFファイルのペースト（貼り付け）処理 ▼
+ // ▼ 変更点：iPadにも対応したPDFペースト処理 ▼
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
- const items = e.clipboardData?.items;
- if (!items) return;
+ let pdfFile = null;
+ const clipboardData = e.clipboardData;
+ if (!clipboardData) return;
 
- const target = e.currentTarget;
+ // パターン1: PC等の標準的なファイル取得
+ if (clipboardData.files && clipboardData.files.length > 0) {
+ for (let i = 0; i < clipboardData.files.length; i++) {
+ const file = clipboardData.files[i];
+ if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+ pdfFile = file;
+ break;
+ }
+ }
+ }
 
- for (let i = 0; i < items.length; i++) {
- if (items[i].type === 'application/pdf') {
+ // パターン2: iPad等のSafari用ファイル取得フォールバック
+ if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
+ for (let i = 0; i < clipboardData.items.length; i++) {
+ const item = clipboardData.items[i];
+ if (item.kind === 'file') {
+ const file = item.getAsFile();
+ if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))) {
+ pdfFile = file;
+ break;
+ }
+ }
+ }
+ }
+
+ if (pdfFile) {
  e.preventDefault();
- const file = items[i].getAsFile();
- if (file) {
- // 容量が大きすぎる場合は警告を出す（Redisの保存上限対策）
- if (file.size > 2 * 1024 * 1024) { 
+ const target = e.currentTarget;
+ if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
- // PDFを埋め込む枠（誤爆防止のため contenteditable="false" に設定）
- const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><object data="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></object></div><p><br></p>`;
+ // iPad対応のため object ではなく iframe を使用
+ const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
  
  target.focus();
  document.execCommand("insertHTML", false, pdfHtml);
  updateBlock(block.id, { content: target.innerHTML });
  };
- reader.readAsDataURL(file);
- }
- return; // PDFを見つけたら処理を終了
- }
+ reader.readAsDataURL(pdfFile);
  }
  };
 
@@ -192,7 +210,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  onFocus={(e) => setLastFocused(block.id, e.currentTarget)} 
  onBlur={handleBlur} 
  onKeyDown={handleKeyDown} 
- onPaste={handlePaste} // ←ペーストイベントを追加
+ onPaste={handlePaste}
  className="w-full text-lg leading-relaxed outline-none min-h-[1.5em] bg-transparent py-1 text-slate-800 break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" 
  />
  </div>
@@ -228,33 +246,52 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
- // ▼ 新規追加：アコーディオン内でのPDFペースト処理 ▼
+ // ▼ 変更点：iPadにも対応したPDFペースト処理 ▼
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
- const items = e.clipboardData?.items;
- if (!items) return;
+ let pdfFile = null;
+ const clipboardData = e.clipboardData;
+ if (!clipboardData) return;
 
- const target = e.currentTarget;
+ if (clipboardData.files && clipboardData.files.length > 0) {
+ for (let i = 0; i < clipboardData.files.length; i++) {
+ const file = clipboardData.files[i];
+ if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+ pdfFile = file;
+ break;
+ }
+ }
+ }
 
- for (let i = 0; i < items.length; i++) {
- if (items[i].type === 'application/pdf') {
+ if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
+ for (let i = 0; i < clipboardData.items.length; i++) {
+ const item = clipboardData.items[i];
+ if (item.kind === 'file') {
+ const file = item.getAsFile();
+ if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))) {
+ pdfFile = file;
+ break;
+ }
+ }
+ }
+ }
+
+ if (pdfFile) {
  e.preventDefault();
- const file = items[i].getAsFile();
- if (file) {
- if (file.size > 2 * 1024 * 1024) { 
+ const target = e.currentTarget;
+ if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
- const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><object data="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></object></div><p><br></p>`;
+ // iPad対応のため object ではなく iframe を使用
+ const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
+ 
  target.focus();
  document.execCommand("insertHTML", false, pdfHtml);
  updateBlock(block.id, { content: target.innerHTML });
  };
- reader.readAsDataURL(file);
- }
- return; 
- }
+ reader.readAsDataURL(pdfFile);
  }
  };
 
@@ -609,7 +646,7 @@ export default function MemoApp() {
 
  return (
  <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans relative">
- {/* ＝＝＝ 左側ペイン (スマホ時はisSidebarOpenがtrueの時のみ全画面表示、PC/iPad時は左30%) ＝＝＝ */}
+ {/* ＝＝＝ 左側ペイン ＝＝＝ */}
  {isSidebarOpen && (
  <div className={`${isMobile ? 'w-full absolute inset-0 z-30' : 'w-[30%] min-w-[280px] max-w-[400px] border-r'} border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)]`}>
  {leftView === "folders" && (
@@ -697,7 +734,7 @@ export default function MemoApp() {
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
  
- {/* アコーディオン追加ボタン（カーソル位置） */}
+ {/* アコーディオン追加ボタン */}
  <button 
  onMouseDown={(e) => e.preventDefault()} 
  onClick={() => handleInsertBlockAtCursor('accordion')} 
