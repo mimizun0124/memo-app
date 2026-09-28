@@ -149,13 +149,14 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
  };
 
- // ▼ 変更点：iPadにも対応したPDFペースト処理 ▼
+ // ▼ 変更点：iPad(iOS)特有のクリップボード挙動に強力に対応したペースト処理 ▼
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
- let pdfFile = null;
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
 
- // パターン1: PC等の標準的なファイル取得
+ let pdfFile: File | null = null;
+
+ // 1. 通常のファイルオブジェクトとして取得を試みる
  if (clipboardData.files && clipboardData.files.length > 0) {
  for (let i = 0; i < clipboardData.files.length; i++) {
  const file = clipboardData.files[i];
@@ -166,14 +167,16 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  }
  }
 
- // パターン2: iPad等のSafari用ファイル取得フォールバック
+ // 2. DataTransferItem から取得を試みる (iPad等のSafari対策)
  if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
  for (let i = 0; i < clipboardData.items.length; i++) {
  const item = clipboardData.items[i];
- if (item.kind === 'file') {
+ // Apple純正アプリからのコピーなど、様々なMIMEタイプに反応させる
+ if (item.kind === 'file' || item.type.includes('pdf') || item.type.includes('apple')) {
  const file = item.getAsFile();
- if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))) {
- pdfFile = file;
+ if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') || file.type === '')) {
+ // 拡張子がない、または特殊なタイプで渡ってきた場合もPDFとして扱う
+ pdfFile = new File([file], "document.pdf", { type: "application/pdf" });
  break;
  }
  }
@@ -181,15 +184,17 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  }
 
  if (pdfFile) {
- e.preventDefault();
+ e.preventDefault(); // デフォルトのペースト（ファイル名だけ貼り付けられる現象など）を阻止
  const target = e.currentTarget;
+ 
  if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
+ 
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
- // iPad対応のため object ではなく iframe を使用
+ // iframeを使ってPDFを表示（iPadのSafariで最も安定して表示される方法）
  const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
  
  target.focus();
@@ -246,11 +251,12 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
- // ▼ 変更点：iPadにも対応したPDFペースト処理 ▼
+ // ▼ アコーディオン内にも同様の強力なPDFペースト処理を適用 ▼
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
- let pdfFile = null;
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
+
+ let pdfFile: File | null = null;
 
  if (clipboardData.files && clipboardData.files.length > 0) {
  for (let i = 0; i < clipboardData.files.length; i++) {
@@ -265,10 +271,10 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
  for (let i = 0; i < clipboardData.items.length; i++) {
  const item = clipboardData.items[i];
- if (item.kind === 'file') {
+ if (item.kind === 'file' || item.type.includes('pdf') || item.type.includes('apple')) {
  const file = item.getAsFile();
- if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))) {
- pdfFile = file;
+ if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') || file.type === '')) {
+ pdfFile = new File([file], "document.pdf", { type: "application/pdf" });
  break;
  }
  }
@@ -278,13 +284,14 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  if (pdfFile) {
  e.preventDefault();
  const target = e.currentTarget;
+ 
  if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
+ 
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
- // iPad対応のため object ではなく iframe を使用
  const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
  
  target.focus();
