@@ -10,9 +10,14 @@ import { getSyncData, setSyncData } from './actions';
 // URLの自動リンク化ユーティリティ
 // ==========================================
 const linkifyText = (text: string) => {
- const urlRegex = /(?<!href="|src=")(https?:\/\/[^\s<]+)/g;
- return text.replace(urlRegex, (url) => {
- return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: underline; cursor: pointer;">${url}</a>`;
+ // ▼ 修正点1：古いSafariでクラッシュする原因となっていた否定後読み（?<!）を削除し、関数内で判定
+ const urlRegex = /(https?:\/\/[^\s<"']+)/g;
+ return text.replace(urlRegex, (match, p1, offset, fullText) => {
+ const before = fullText.slice(Math.max(0, offset - 7), offset);
+ if (before.includes('href="') || before.includes('src="') || before.includes("href='") || before.includes("src='")) {
+ return match;
+ }
+ return `<a href="${match}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: underline; cursor: pointer;">${match}</a>`;
  });
 };
 
@@ -120,10 +125,13 @@ export interface BlockProps {
 // ==========================================
 const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused: (id: string, el: HTMLElement) => void; handleAddBlock: (afterId: string | null, type: BlockType) => void; }> = ({ block, updateBlock, deleteBlock, moveBlock, isFirst, isLast, onImageSelect, pageLength, setLastFocused, handleAddBlock }) => {
  const contentRef = useRef<HTMLDivElement>(null);
- 
+
  useEffect(() => { 
  if (contentRef.current && contentRef.current.innerHTML !== block.content) { 
+ // ▼ 修正点2：ユーザーが現在フォーカスして入力中の場合は上書きをスキップする
+ if (document.activeElement !== contentRef.current) {
  contentRef.current.innerHTML = block.content; 
+ }
  } 
  }, [block.content]);
 
@@ -140,23 +148,27 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  const text = e.currentTarget.textContent?.trim() || "";
  if (text.startsWith("https://lichess.org/study/")) { updateBlock(block.id, { type: 'embed', content: text.replace("https://lichess.org/study/", "https://lichess.org/study/embed/") }); return; }
  if (text.match(/^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}$/)) { updateBlock(block.id, { type: 'embed', content: text.replace("https://lichess.org/", "https://lichess.org/embed/game/") + "?theme=auto&bg=auto" }); return; }
- 
+
  const linkedHtml = linkifyText(e.currentTarget.innerHTML);
  updateBlock(block.id, { content: linkedHtml });
  };
 
  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => { 
- if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
+ // ▼ 修正点3：IMEでの日本語変換中なら何もしない（Backspace誤爆防止）
+ if (e.nativeEvent.isComposing) return;
+
+ if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { 
+ e.preventDefault(); 
+ deleteBlock(block.id); 
+ } 
  };
 
- // ▼ 変更点：iPad(iOS)特有のクリップボード挙動に強力に対応したペースト処理 ▼
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
 
  let pdfFile: File | null = null;
 
- // 1. 通常のファイルオブジェクトとして取得を試みる
  if (clipboardData.files && clipboardData.files.length > 0) {
  for (let i = 0; i < clipboardData.files.length; i++) {
  const file = clipboardData.files[i];
@@ -167,15 +179,12 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  }
  }
 
- // 2. DataTransferItem から取得を試みる (iPad等のSafari対策)
  if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
  for (let i = 0; i < clipboardData.items.length; i++) {
  const item = clipboardData.items[i];
- // Apple純正アプリからのコピーなど、様々なMIMEタイプに反応させる
  if (item.kind === 'file' || item.type.includes('pdf') || item.type.includes('apple')) {
  const file = item.getAsFile();
  if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') || file.type === '')) {
- // 拡張子がない、または特殊なタイプで渡ってきた場合もPDFとして扱う
  pdfFile = new File([file], "document.pdf", { type: "application/pdf" });
  break;
  }
@@ -184,19 +193,18 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  }
 
  if (pdfFile) {
- e.preventDefault(); // デフォルトのペースト（ファイル名だけ貼り付けられる現象など）を阻止
+ e.preventDefault();
  const target = e.currentTarget;
- 
+
  if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
- 
+
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
- // iframeを使ってPDFを表示（iPadのSafariで最も安定して表示される方法）
  const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
- 
+
  target.focus();
  document.execCommand("insertHTML", false, pdfHtml);
  updateBlock(block.id, { content: target.innerHTML });
@@ -238,20 +246,26 @@ const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock, mov
 const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: HTMLElement) => void; }> = ({ block, updateBlock, deleteBlock, moveBlock, isFirst, isLast, onImageSelect, setLastFocused }) => {
  const contentRef = useRef<HTMLDivElement>(null);
 
- useEffect(() => { if (contentRef.current && contentRef.current.innerHTML !== block.content) { contentRef.current.innerHTML = block.content || ''; } }, [block.content]);
- 
+ useEffect(() => { 
+ if (contentRef.current && contentRef.current.innerHTML !== block.content) { 
+ // ▼ 修正点2：ユーザーが現在フォーカスして入力中の場合は上書きをスキップする
+ if (document.activeElement !== contentRef.current) {
+ contentRef.current.innerHTML = block.content || ''; 
+ }
+ } 
+ }, [block.content]);
+
  const handleClick = (e: React.MouseEvent) => { 
  const target = e.target as HTMLElement; 
  if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); } 
  if (target.tagName === 'A') { const url = target.getAttribute('href'); if (url) window.open(url, '_blank', 'noopener,noreferrer'); }
  };
- 
+
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => { 
  const linkedHtml = linkifyText(e.currentTarget.innerHTML);
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
- // ▼ アコーディオン内にも同様の強力なPDFペースト処理を適用 ▼
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
@@ -284,16 +298,16 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  if (pdfFile) {
  e.preventDefault();
  const target = e.currentTarget;
- 
+
  if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
- 
+
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
  const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
- 
+
  target.focus();
  document.execCommand("insertHTML", false, pdfHtml);
  updateBlock(block.id, { content: target.innerHTML });
@@ -326,7 +340,7 @@ const InteractiveChessBlock: React.FC<BlockProps> = ({ block, updateBlock, delet
  const currentFen = useMemo(() => { const g = new Chess(); for (let i = 0; i <= safeIndex; i++) { g.move(moveHistory[i]); } return g.fen(); }, [moveHistory, safeIndex]);
 
  useEffect(() => { setCurrentMoveIndex(moveHistory.length - 1); }, [moveHistory.length]);
- 
+
  function onDrop(sourceSquare: string, targetSquare: string) {
  if (safeIndex !== moveHistory.length - 1) return false;
  try { const g = new Chess(currentFen); const move = g.move({ from: sourceSquare, to: targetSquare, promotion: "q" }); if (move) { parsedGame.move(move); updateBlock(block.id, { content: parsedGame.pgn() }); return true; } } catch (e) {} return false;
@@ -442,7 +456,8 @@ export default function MemoApp() {
 
  if (diffY > 50) {
  const activeEl = document.activeElement as HTMLElement;
- if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+ // ▼ 修正点4：contentEditableを除外し、TEXTAREA/INPUTのみ強制Blurする
+ if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
  activeEl.blur();
  }
  touchStartY.current = null;
@@ -497,7 +512,7 @@ export default function MemoApp() {
 
  const handleCreateMemo = () => { const newMemo: MemoItem = { id: Date.now().toString(), folderId: activeFolderId || "default", title: "", pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]], isPinned: false, updatedAt: Date.now(), }; setMemos([newMemo, ...memos]); setActiveMemoId(newMemo.id); setActivePageIndex(0); setIsSidebarOpen(isMobile ? false : true); };
  const updateActiveMemo = (updates: Partial<MemoItem>) => { setMemos((prev) => prev.map((m) => (m.id === activeMemoId ? { ...m, ...updates, updatedAt: Date.now() } : m))); };
- 
+
  const handleUpdateBlock = (blockId: string, updates: Partial<BlockItem>) => { 
  setMemos((prev) => prev.map((m) => { 
  if (m.id === activeMemoId) { 
@@ -513,9 +528,9 @@ export default function MemoApp() {
  return m; 
  })); 
  };
- 
+
  const handleDeleteBlock = (blockId: string) => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; newPages[activePageIndex] = newPages[activePageIndex].filter(b => b.id !== blockId); if (newPages[activePageIndex].length === 0) newPages[activePageIndex] = [{ id: Date.now().toString(), type: 'text', content: '' }]; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); };
- 
+
  const handleInsertBlockAtCursor = (type: BlockType) => {
  const selection = window.getSelection();
  if (!selection || selection.rangeCount === 0 || !lastFocusedBlockRef.current) {
@@ -557,7 +572,7 @@ export default function MemoApp() {
  const newPages = [...m.pages];
  const pageBlocks = [...newPages[activePageIndex]];
  const index = pageBlocks.findIndex(b => b.id === blockId);
- 
+
  if (index !== -1) {
  pageBlocks[index] = { ...pageBlocks[index], content: beforeHtml };
  pageBlocks.splice(index + 1, 0, newTargetBlock, afterTextBlock);
@@ -613,10 +628,10 @@ export default function MemoApp() {
  return m;
  }));
  };
- 
+
  const applyFormat = (command: string, value?: string) => { document.execCommand(command, false, value); if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); };
  const changeFontSize = (sizePx: string) => { const selection = window.getSelection(); if (!selection || selection.rangeCount === 0) return; const span = document.createElement("span"); span.style.fontSize = `${sizePx}px`; span.textContent = selection.toString(); const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(span); if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); };
- 
+
  const changeFontFamily = (fontFamily: string) => { 
  const selection = window.getSelection(); 
  if (!selection || selection.rangeCount === 0) return; 
@@ -740,15 +755,7 @@ export default function MemoApp() {
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
- 
- {/* アコーディオン追加ボタン */}
- <button 
- onMouseDown={(e) => e.preventDefault()} 
- onClick={() => handleInsertBlockAtCursor('accordion')} 
- className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm whitespace-nowrap"
- >
- アコーディオン
- </button>
+ <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleInsertBlockAtCursor('accordion')} className="font-bold px-2 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700 flex items-center gap-1 text-sm whitespace-nowrap"> アコーディオン</button>
  </div>
  <div className="flex items-center gap-1 bg-indigo-50/50 rounded-lg p-1 border border-indigo-100 min-w-max">
  <button disabled={activePageIndex === 0} onClick={() => setActivePageIndex(p => p - 1)} className="px-3 py-1.5 bg-white rounded-md shadow-sm text-indigo-600 disabled:opacity-40 disabled:shadow-none font-bold hover:bg-indigo-50 transition-colors text-sm"> <span className="hidden sm:inline"> 前</span></button>
