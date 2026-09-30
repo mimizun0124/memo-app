@@ -7,13 +7,13 @@ import { Chessboard } from "react-chessboard";
 import { getSyncData, setSyncData } from './actions';
 
 // ==========================================
-// URLの自動リンク化ユーティリティ（Safariエラー対策版）
+// URLの自動リンク化ユーティリティ（Safariエラー完全対策版）
 // ==========================================
 const linkifyText = (text: string) => {
- // 古いiPad(Safari)でエラーになる「(?<!...)」を使わず、安全にタグとURLを判別する方式に変更
+ // 古いiPadでエラーになる原因だった構文を削除し、安全かつ強力にURLを判別
  const regex = /(<a\b[^>]*>[\s\S]*?<\/a>|<iframe\b[^>]*>[\s\S]*?<\/iframe>|<object\b[^>]*>[\s\S]*?<\/object>|<img\b[^>]*>)|(https?:\/\/[^\s<]+)/g;
  return text.replace(regex, (match, htmlBlock, url) => {
- if (htmlBlock) return htmlBlock; // 既に画像やリンクなどのHTMLタグなら何もしない
+ if (htmlBlock) return htmlBlock; 
  return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: underline; cursor: pointer;">${url}</a>`;
  });
 };
@@ -122,10 +122,14 @@ export interface BlockProps {
 // ==========================================
 const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused: (id: string, el: HTMLElement) => void; handleAddBlock: (afterId: string | null, type: BlockType) => void; }> = ({ block, updateBlock, deleteBlock, moveBlock, isFirst, isLast, onImageSelect, pageLength, setLastFocused, handleAddBlock }) => {
  const contentRef = useRef<HTMLDivElement>(null);
+ const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
  
  useEffect(() => { 
  if (contentRef.current && contentRef.current.innerHTML !== block.content) { 
- contentRef.current.innerHTML = block.content; 
+ // ▼ 文字消え対策＆カーソル飛び防止：自分が入力中の場合はDOMを上書きしない
+ if (document.activeElement !== contentRef.current) {
+ contentRef.current.innerHTML = block.content || ''; 
+ }
  } 
  }, [block.content]);
 
@@ -138,7 +142,17 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  }
  };
 
+ // ▼ 文字消え対策：入力中（1秒手を止めるたび）にリアルタイムで自動保存する
+ const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+ const html = e.currentTarget.innerHTML;
+ if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+ typingTimerRef.current = setTimeout(() => {
+ updateBlock(block.id, { content: html });
+ }, 1000);
+ };
+
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+ if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
  const text = e.currentTarget.textContent?.trim() || "";
  if (text.startsWith("https://lichess.org/study/")) { updateBlock(block.id, { type: 'embed', content: text.replace("https://lichess.org/study/", "https://lichess.org/study/embed/") }); return; }
  if (text.match(/^https:\/\/lichess\.org\/[a-zA-Z0-9]{8,12}$/)) { updateBlock(block.id, { type: 'embed', content: text.replace("https://lichess.org/", "https://lichess.org/embed/game/") + "?theme=auto&bg=auto" }); return; }
@@ -154,9 +168,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
-
  let pdfFile: File | null = null;
-
  if (clipboardData.files && clipboardData.files.length > 0) {
  for (let i = 0; i < clipboardData.files.length; i++) {
  const file = clipboardData.files[i];
@@ -166,7 +178,6 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  }
  }
  }
-
  if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
  for (let i = 0; i < clipboardData.items.length; i++) {
  const item = clipboardData.items[i];
@@ -183,16 +194,13 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  if (pdfFile) {
  e.preventDefault();
  const target = e.currentTarget;
- 
  if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
- 
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
  const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
- 
  target.focus();
  document.execCommand("insertHTML", false, pdfHtml);
  updateBlock(block.id, { content: target.innerHTML });
@@ -209,6 +217,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  suppressContentEditableWarning 
  onClick={handleClick} 
  onFocus={(e) => setLastFocused(block.id, e.currentTarget)} 
+ onInput={handleInput} 
  onBlur={handleBlur} 
  onKeyDown={handleKeyDown} 
  onPaste={handlePaste}
@@ -233,16 +242,32 @@ const EmbedBlock: React.FC<BlockProps> = ({ block, updateBlock, deleteBlock, mov
 
 const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: HTMLElement) => void; }> = ({ block, updateBlock, deleteBlock, moveBlock, isFirst, isLast, onImageSelect, setLastFocused }) => {
  const contentRef = useRef<HTMLDivElement>(null);
+ const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
- useEffect(() => { if (contentRef.current && contentRef.current.innerHTML !== block.content) { contentRef.current.innerHTML = block.content || ''; } }, [block.content]);
+ useEffect(() => { 
+ if (contentRef.current && contentRef.current.innerHTML !== block.content) { 
+ if (document.activeElement !== contentRef.current) {
+ contentRef.current.innerHTML = block.content || ''; 
+ }
+ } 
+ }, [block.content]);
  
  const handleClick = (e: React.MouseEvent) => { 
  const target = e.target as HTMLElement; 
  if (target.tagName === 'IMG' && onImageSelect) { onImageSelect(target as HTMLImageElement); } 
  if (target.tagName === 'A') { const url = target.getAttribute('href'); if (url) window.open(url, '_blank', 'noopener,noreferrer'); }
  };
+
+ const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+ const html = e.currentTarget.innerHTML;
+ if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+ typingTimerRef.current = setTimeout(() => {
+ updateBlock(block.id, { content: html });
+ }, 1000);
+ };
  
  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => { 
+ if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
  const linkedHtml = linkifyText(e.currentTarget.innerHTML);
  updateBlock(block.id, { content: linkedHtml }); 
  };
@@ -250,9 +275,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
-
  let pdfFile: File | null = null;
-
  if (clipboardData.files && clipboardData.files.length > 0) {
  for (let i = 0; i < clipboardData.files.length; i++) {
  const file = clipboardData.files[i];
@@ -262,7 +285,6 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  }
  }
  }
-
  if (!pdfFile && clipboardData.items && clipboardData.items.length > 0) {
  for (let i = 0; i < clipboardData.items.length; i++) {
  const item = clipboardData.items[i];
@@ -279,16 +301,13 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  if (pdfFile) {
  e.preventDefault();
  const target = e.currentTarget;
- 
  if (pdfFile.size > 2 * 1024 * 1024) { 
  alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
- 
  const reader = new FileReader();
  reader.onload = (event) => {
  const base64Pdf = event.target?.result;
  const pdfHtml = `<div contenteditable="false" style="margin: 16px 0; width: 100%;"><iframe src="${base64Pdf}" type="application/pdf" width="100%" height="400px" style="border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;"></iframe></div><p><br></p>`;
- 
  target.focus();
  document.execCommand("insertHTML", false, pdfHtml);
  updateBlock(block.id, { content: target.innerHTML });
@@ -306,7 +325,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  </div>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
- <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onBlur={handleBlur} onPaste={handlePaste} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
+ <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onInput={handleInput} onBlur={handleBlur} onPaste={handlePaste} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap [&_img]:max-w-full [&_img]:cursor-pointer" /></div>
  </details>
  </div>
  );
@@ -409,29 +428,55 @@ export default function MemoApp() {
  const isLongPress = useRef<boolean>(false);
  const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
 
- // ▼ エラー修正：アプリがバックグラウンドに回った時の安全な保存処理 ▼
+ // 緊急保存用に最新のmemosを常に参照できるようにする
+ const memosRef = useRef(memos);
  useEffect(() => {
- const forceSave = () => {
- if (document.visibilityState === 'hidden') {
- const activeEl = document.activeElement as HTMLElement | null;
- if (activeEl && typeof activeEl.blur === 'function') {
- activeEl.blur(); // Vercelエラーを防ぐため型を厳密に指定
+ memosRef.current = memos;
+ }, [memos]);
+
+ // ▼ 最強の文字消え対策（緊急時の強制保存機能） ▼
+ useEffect(() => {
+ const emergencySave = () => {
+ let currentMemos = [...memosRef.current];
+ 
+ // もし文字を打っている最中なら、画面（DOM）から最新の文字を強引に回収する
+ if (lastFocusedBlockRef.current) {
+ const { id, element } = lastFocusedBlockRef.current;
+ if (element && typeof element.innerHTML === 'string') {
+ currentMemos = currentMemos.map(m => {
+ const newPages = m.pages.map(page => 
+ page.map(b => b.id === id ? { ...b, content: element.innerHTML } : b)
+ );
+ return { ...m, pages: newPages, updatedAt: Date.now() };
+ });
+ memosRef.current = currentMemos; // 最新状態に書き換え
  }
  }
- };
- const forceSaveOnHide = () => {
- const activeEl = document.activeElement as HTMLElement | null;
- if (activeEl && typeof activeEl.blur === 'function') {
- activeEl.blur();
+
+ // 同期的に即座に保存
+ if (currentMemos.length > 0) {
+ try {
+ localStorage.setItem("smartnotes_memos_v3_backup", JSON.stringify(currentMemos));
+ setSyncData("smartnotes_memos_v3", currentMemos);
+ } catch(err) {
+ console.error(err);
+ }
  }
  };
 
- document.addEventListener('visibilitychange', forceSave);
- window.addEventListener('pagehide', forceSaveOnHide);
+ const onVisibilityChange = () => {
+ // 画面を切り替えた瞬間に発動
+ if (document.visibilityState === 'hidden') {
+ emergencySave();
+ }
+ };
+
+ document.addEventListener('visibilitychange', onVisibilityChange);
+ window.addEventListener('pagehide', emergencySave); // iOS Safari向けの強力な保険
 
  return () => {
- document.removeEventListener('visibilitychange', forceSave);
- window.removeEventListener('pagehide', forceSaveOnHide);
+ document.removeEventListener('visibilitychange', onVisibilityChange);
+ window.removeEventListener('pagehide', emergencySave);
  };
  }, []);
 
@@ -464,7 +509,7 @@ export default function MemoApp() {
  if (diffY > 50) {
  const activeEl = document.activeElement as HTMLElement;
  if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
- activeEl.blur();
+ activeEl.blur(); // ここでフォーカスを外すと handleBlur が発動し、安全に保存される
  }
  touchStartY.current = null;
  }
@@ -495,20 +540,24 @@ export default function MemoApp() {
  fetchAllData();
  }, []);
 
+ // ▼ 通常の自動保存処理（文字入力の度にサーバーへ送りすぎないよう0.5秒のラグを設ける） ▼
  useEffect(() => {
  if (!isLoaded) return;
- const saveFolders = async () => {
- if (folders.length > 0) await setSyncData("smartnotes_folders_v3", folders);
- };
- saveFolders();
+ const timer = setTimeout(() => {
+ if (folders.length > 0) setSyncData("smartnotes_folders_v3", folders);
+ }, 500);
+ return () => clearTimeout(timer);
  }, [folders, isLoaded]);
 
  useEffect(() => {
  if (!isLoaded) return;
- const saveMemos = async () => {
- if (memos.length > 0) await setSyncData("smartnotes_memos_v3", memos);
- };
- saveMemos();
+ const timer = setTimeout(() => {
+ if (memos.length > 0) {
+ setSyncData("smartnotes_memos_v3", memos);
+ try { localStorage.setItem("smartnotes_memos_v3_backup", JSON.stringify(memos)); } catch(e){}
+ }
+ }, 500);
+ return () => clearTimeout(timer);
  }, [memos, isLoaded]);
 
  useEffect(() => {
