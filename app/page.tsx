@@ -7,11 +7,13 @@ import { Chessboard } from "react-chessboard";
 import { getSyncData, setSyncData } from './actions';
 
 // ==========================================
-// URLの自動リンク化ユーティリティ
+// URLの自動リンク化ユーティリティ（Safariエラー対策版）
 // ==========================================
 const linkifyText = (text: string) => {
- const urlRegex = /(?<!href="|src=")(https?:\/\/[^\s<]+)/g;
- return text.replace(urlRegex, (url) => {
+ // 古いiPad(Safari)でエラーになる「(?<!...)」を使わず、安全にタグとURLを判別する方式に変更
+ const regex = /(<a\b[^>]*>[\s\S]*?<\/a>|<iframe\b[^>]*>[\s\S]*?<\/iframe>|<object\b[^>]*>[\s\S]*?<\/object>|<img\b[^>]*>)|(https?:\/\/[^\s<]+)/g;
+ return text.replace(regex, (match, htmlBlock, url) => {
+ if (htmlBlock) return htmlBlock; // 既に画像やリンクなどのHTMLタグなら何もしない
  return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: underline; cursor: pointer;">${url}</a>`;
  });
 };
@@ -407,23 +409,25 @@ export default function MemoApp() {
  const isLongPress = useRef<boolean>(false);
  const lastFocusedBlockRef = useRef<{ id: string, element: HTMLElement } | null>(null);
 
- // ▼ 新規追加：アプリがバックグラウンドに回った時や閉じられる時に強制保存する処理 ▼
+ // ▼ エラー修正：アプリがバックグラウンドに回った時の安全な保存処理 ▼
  useEffect(() => {
  const forceSave = () => {
  if (document.visibilityState === 'hidden') {
- if (document.activeElement && typeof document.activeElement.blur === 'function') {
- document.activeElement.blur(); // フォーカスを外してonBlur（保存処理）を発火させる
+ const activeEl = document.activeElement as HTMLElement | null;
+ if (activeEl && typeof activeEl.blur === 'function') {
+ activeEl.blur(); // Vercelエラーを防ぐため型を厳密に指定
  }
  }
  };
  const forceSaveOnHide = () => {
- if (document.activeElement && typeof document.activeElement.blur === 'function') {
- document.activeElement.blur();
+ const activeEl = document.activeElement as HTMLElement | null;
+ if (activeEl && typeof activeEl.blur === 'function') {
+ activeEl.blur();
  }
  };
 
  document.addEventListener('visibilitychange', forceSave);
- window.addEventListener('pagehide', forceSaveOnHide); // iOS/iPadOSのSafari対策
+ window.addEventListener('pagehide', forceSaveOnHide);
 
  return () => {
  document.removeEventListener('visibilitychange', forceSave);
