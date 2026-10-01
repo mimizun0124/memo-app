@@ -131,7 +131,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  } 
  }, [block.content]);
 
- // ▼ エラー完全対策版：色文字から脱出する魔法 ▼
+ // 色文字から脱出する魔法
  const breakOutFromColor = () => {
  setTimeout(() => {
  try {
@@ -141,7 +141,6 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  const range = sel.getRangeAt(0);
  const node = range.endContainer;
  
- // 要素が空だったりテキストノードでない場合は安全にスキップ
  if (!node) return;
 
  if (node.nodeType === 3 && node.textContent && range.endOffset === node.textContent.length) {
@@ -159,7 +158,6 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  curr = curr.parentElement as HTMLElement | null;
  }
  
- // 親要素が存在する場合のみ安全にノードを挿入する
  if (coloredElement && coloredElement.parentElement) {
  const next = coloredElement.nextSibling as HTMLElement | null;
  if (next && next.nodeName === 'SPAN' && next.style?.color === 'rgb(30, 41, 59)') {
@@ -232,7 +230,6 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  deleteBlock(block.id); 
  return;
  } 
- // 日本語入力中（IME変換中）のEnterキーには反応させない安全策
  if (e.key === 'Enter' && !(e.nativeEvent as any).isComposing) {
  e.preventDefault(); 
  const resetHtml = `<br><span style="color: #1e293b; font-family: 'Noto Sans JP', sans-serif; font-weight: bold;">&#8203;</span>`;
@@ -344,7 +341,6 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  } 
  }, [block.content]);
 
- // ▼ エラー完全対策版：色文字から脱出する魔法 ▼
  const breakOutFromColor = () => {
  setTimeout(() => {
  try {
@@ -903,10 +899,12 @@ export default function MemoApp() {
  }
 
  return (
- <div className="flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans relative">
+ // ▼ 修正点1：画面の「根っこ」を fixed inset-0 と overscroll-none で完全に固定し、全体スクロールを防ぐ ▼
+ <div className="flex fixed inset-0 overflow-hidden bg-white text-slate-800 font-sans overscroll-none">
+ 
  {/* ＝＝＝ 左側ペイン ＝＝＝ */}
  {isSidebarOpen && (
- <div className={`${isMobile ? 'w-full absolute inset-0 z-30' : 'w-[30%] min-w-[280px] max-w-[400px] border-r'} border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)]`}>
+ <div className={`${isMobile ? 'w-full absolute inset-0 z-30' : 'w-[30%] min-w-[280px] max-w-[400px] border-r'} border-slate-200 flex flex-col bg-slate-50 relative shadow-[4px_0_24px_rgba(0,0,0,0.02)] shrink-0 h-full`}>
  {leftView === "folders" && (
  <>
  <div className="p-6 pb-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 sticky top-0"><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">フォルダ</h1></div>
@@ -955,7 +953,7 @@ export default function MemoApp() {
  )}
 
  {/* ＝＝＝ 右側ペイン (メモ画面) ＝＝＝ */}
- <div className={`${(isMobile && isSidebarOpen) ? 'hidden' : 'flex-1 min-w-0'} flex flex-col bg-white relative transition-all duration-300`}>
+ <div className={`${(isMobile && isSidebarOpen) ? 'hidden' : 'flex-1 min-w-0'} flex flex-col h-full bg-white relative transition-all duration-300`}>
  
  {!activeMemo && !isMobile && (
  <div className="absolute top-4 left-4 z-10">
@@ -965,7 +963,8 @@ export default function MemoApp() {
 
  {activeMemo ? (
  <>
- <div className="flex flex-col bg-white border-b border-slate-200 shadow-sm z-10 sticky top-0">
+ {/* ▼ 修正点2：ツールバーの枠を絶対に縮まない・押し出されない構造（shrink-0）に変更し、z-indexを強化 ▼ */}
+ <div className="flex flex-col bg-white border-b border-slate-200 shadow-sm z-50 shrink-0">
  <div className="flex items-center justify-between p-3 px-4 lg:px-6">
  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 px-3 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 text-slate-600 font-bold text-sm transition-colors flex items-center gap-2">
  {isMobile ? " 戻る" : (isSidebarOpen ? " " : " ")}
@@ -976,7 +975,6 @@ export default function MemoApp() {
  </div>
  </div>
 
- {/* 装飾ツールバー ＆ ページ切り替え */}
  <div className="flex items-center justify-between px-4 lg:px-6 pb-3 overflow-x-auto gap-4">
  <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 min-w-max">
  <input type="color" onChange={(e) => applyFormat("foreColor", e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" title="文字色" />
@@ -994,7 +992,7 @@ export default function MemoApp() {
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
-
+ 
  <button 
  onMouseDown={(e) => e.preventDefault()} 
  onClick={() => handleInsertBlockAtCursor('accordion')} 
@@ -1011,8 +1009,9 @@ export default function MemoApp() {
  </div>
  </div>
 
+ {/* ▼ 修正点3：スクロール枠に min-h-0 を付与して、中の文章がどれだけ増えても全体の枠を押し広げないように制御 ▼ */}
  <div 
- className="flex-1 overflow-y-auto w-full relative"
+ className="flex-1 min-h-0 overflow-y-auto w-full relative bg-white"
  onTouchStart={handleGlobalTouchStart}
  onTouchMove={handleGlobalTouchMove}
  onTouchEnd={handleGlobalTouchEnd}
@@ -1034,7 +1033,8 @@ export default function MemoApp() {
  </div>
  </div>
 
- <div className="border-t border-slate-200 p-3 sm:p-4 px-4 sm:px-6 flex justify-between items-center bg-white shadow-[0_-4px_10px_rgba(0,0,0,0.02)] z-10">
+ {/* ▼ 修正点4：フッターも絶対に押し出されないように shrink-0 を追加 ▼ */}
+ <div className="border-t border-slate-200 p-3 sm:p-4 px-4 sm:px-6 flex justify-between items-center bg-white shadow-[0_-4px_10px_rgba(0,0,0,0.02)] z-10 shrink-0">
  <button onClick={handleDeleteCurrentPage} className="text-red-400 hover:text-red-600 font-bold px-3 py-2 text-xs sm:text-sm transition-colors rounded hover:bg-red-50">このページを削除</button>
  <button onClick={handleAddPage} className="bg-indigo-600 text-white hover:bg-indigo-700 font-bold px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl shadow-md transition-all active:scale-95 text-xs sm:text-sm">＋ 次のページを追加</button>
  </div>
