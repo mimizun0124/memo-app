@@ -7,7 +7,7 @@ import { Chessboard } from "react-chessboard";
 import { getSyncData, setSyncData } from './actions';
 
 // ==========================================
-// URLの自動リンク化ユーティリティ
+// URLの自動リンク化ユーティリティ（Safariエラー完全対策版）
 // ==========================================
 const linkifyText = (text: string) => {
  const regex = /(<a\b[^>]*>[\s\S]*?<\/a>|<iframe\b[^>]*>[\s\S]*?<\/iframe>|<object\b[^>]*>[\s\S]*?<\/object>|<img\b[^>]*>)|(https?:\/\/[^\s<]+)/g;
@@ -158,14 +158,26 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  updateBlock(block.id, { content: linkedHtml });
  };
 
+ // ▼ 新機能：改行（Enter）した瞬間に、色の引き継ぎを断ち切って黒に戻す ▼
  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => { 
- if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { e.preventDefault(); deleteBlock(block.id); } 
+ if (e.key === 'Backspace' && e.currentTarget.textContent === '' && pageLength > 1) { 
+ e.preventDefault(); 
+ deleteBlock(block.id); 
+ return;
+ } 
+ 
+ if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+ e.preventDefault(); // デフォルトの色引き継ぎ改行をブロック
+ // 見えない文字(&#8203;)を黒・ゴシック・太字で挿入し、設定をリセットした改行を作る
+ const resetHtml = `<br><span style="color: #1e293b; font-family: 'Noto Sans JP', sans-serif; font-weight: bold;">&#8203;</span>`;
+ document.execCommand("insertHTML", false, resetHtml);
+ updateBlock(block.id, { content: e.currentTarget.innerHTML });
+ }
  };
 
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
- 
  let pdfFile: File | null = null;
  let hasImage = false;
 
@@ -198,7 +210,7 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  e.preventDefault();
  const target = e.currentTarget;
  if (pdfFile.size > 2 * 1024 * 1024) { 
- alert(" ️ 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
+ alert(" 2MBを超えるPDFです。\nファイルサイズが大きすぎるため保存に失敗する可能性があります。\n大容量のPDFはGoogleドライブ等に保存し、URLリンクを貼り付けることをお勧めします。");
  }
  const reader = new FileReader();
  reader.onload = (event) => {
@@ -212,7 +224,6 @@ const RichTextBlock: React.FC<BlockProps & { pageLength: number; setLastFocused:
  return;
  }
 
- // ▼ ペースト時に書式を強制リセットし、プレーンテキストとして貼り付ける
  const text = clipboardData.getData("text/plain");
  if (!hasImage && text) {
  e.preventDefault(); 
@@ -285,6 +296,16 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  updateBlock(block.id, { content: linkedHtml }); 
  };
 
+ // ▼ 新機能：改行（Enter）した瞬間に、色の引き継ぎを断ち切って黒に戻す（アコーディオン内） ▼
+ const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => { 
+ if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+ e.preventDefault(); 
+ const resetHtml = `<br><span style="color: #1e293b; font-family: 'Noto Sans JP', sans-serif; font-weight: bold;">&#8203;</span>`;
+ document.execCommand("insertHTML", false, resetHtml);
+ updateBlock(block.id, { content: e.currentTarget.innerHTML });
+ }
+ };
+
  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
  const clipboardData = e.clipboardData;
  if (!clipboardData) return;
@@ -352,7 +373,7 @@ const AccordionBlock: React.FC<BlockProps & { setLastFocused: (id: string, el: H
  </div>
  <details className="border border-slate-300 bg-white [&_summary::-webkit-details-marker]:hidden cursor-pointer rounded-lg overflow-hidden">
  <summary className="font-bold outline-none flex items-center p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"><span className="mr-1 text-slate-600 text-sm">【タップで開閉】</span><input type="text" value={block.title || ''} placeholder="タイトルを入力..." onChange={(e) => updateBlock(block.id, { title: e.target.value })} onClick={(e) => e.preventDefault()} className="flex-1 border-none outline-none bg-transparent focus:ring-0 text-slate-800 pointer-events-auto font-bold" /></summary>
- <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onInput={handleInput} onBlur={handleBlur} onPaste={handlePaste} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap font-bold [&_img]:max-w-full [&_img]:cursor-pointer" style={{ fontFamily: "'Noto Sans JP', sans-serif" }} /></div>
+ <div className="p-4 bg-white"><div ref={contentRef} contentEditable suppressContentEditableWarning onClick={handleClick} onFocus={(e) => setLastFocused(block.id, e.currentTarget)} onInput={handleInput} onBlur={handleBlur} onKeyDown={handleKeyDown} onPaste={handlePaste} className="w-full min-h-[100px] border border-slate-200 rounded-md p-3 outline-none focus:border-indigo-400 bg-white text-slate-800 leading-relaxed break-words whitespace-pre-wrap font-bold [&_img]:max-w-full [&_img]:cursor-pointer" style={{ fontFamily: "'Noto Sans JP', sans-serif" }} /></div>
  </details>
  </div>
  );
@@ -594,7 +615,7 @@ export default function MemoApp() {
 
  const handleCreateMemo = () => { const newMemo: MemoItem = { id: Date.now().toString(), folderId: activeFolderId || "default", title: "", pages: [[{ id: Date.now().toString(), type: 'text', content: '' }]], isPinned: false, updatedAt: Date.now(), }; setMemos([newMemo, ...memos]); setActiveMemoId(newMemo.id); setActivePageIndex(0); setIsSidebarOpen(isMobile ? false : true); };
  const updateActiveMemo = (updates: Partial<MemoItem>) => { setMemos((prev) => prev.map((m) => (m.id === activeMemoId ? { ...m, ...updates, updatedAt: Date.now() } : m))); };
-
+ 
  const handleUpdateBlock = (blockId: string, updates: Partial<BlockItem>) => { 
  setMemos((prev) => prev.map((m) => { 
  if (m.id === activeMemoId) { 
@@ -610,9 +631,9 @@ export default function MemoApp() {
  return m; 
  })); 
  };
-
+ 
  const handleDeleteBlock = (blockId: string) => { setMemos((prev) => prev.map((m) => { if (m.id === activeMemoId) { const newPages = [...m.pages]; newPages[activePageIndex] = newPages[activePageIndex].filter(b => b.id !== blockId); if (newPages[activePageIndex].length === 0) newPages[activePageIndex] = [{ id: Date.now().toString(), type: 'text', content: '' }]; return { ...m, pages: newPages, updatedAt: Date.now() }; } return m; })); };
-
+ 
  const handleInsertBlockAtCursor = (type: BlockType) => {
  const selection = window.getSelection();
  if (!selection || selection.rangeCount === 0 || !lastFocusedBlockRef.current) {
@@ -710,76 +731,19 @@ export default function MemoApp() {
  return m;
  }));
  };
-
- // ▼ 新機能：書式を適用した直後に、自動で「デフォルト状態の透明な文字」を配置してリセットする ▼
- const applyFormat = (command: string, value?: string) => { 
- const selection = window.getSelection();
- const isSelected = selection && !selection.isCollapsed;
  
- document.execCommand(command, false, value); 
+ const applyFormat = (command: string, value?: string) => { document.execCommand(command, false, value); if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); };
+ const changeFontSize = (sizePx: string) => { const selection = window.getSelection(); if (!selection || selection.rangeCount === 0) return; const span = document.createElement("span"); span.style.fontSize = `${sizePx}px`; span.textContent = selection.toString(); const range = selection.getRangeAt(0); range.deleteContents(); range.insertNode(span); if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); };
  
- // 色文字を付けた直後のみ、自動でフォーマットを断ち切る
- if (command === "foreColor" && isSelected && selection.rangeCount > 0) {
- const range = selection.getRangeAt(0);
- range.collapse(false);
- const resetSpan = document.createElement("span");
- resetSpan.style.color = "#1e293b"; // 基本の黒色にリセット
- resetSpan.innerHTML = "&#8203;"; // 見えない文字
- range.insertNode(resetSpan);
- range.selectNodeContents(resetSpan);
- range.collapse(false);
- selection.removeAllRanges();
- selection.addRange(range);
- }
- 
- if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); 
- };
-
- const changeFontSize = (sizePx: string) => { 
- const selection = window.getSelection(); 
- if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return; 
- const span = document.createElement("span"); 
- span.style.fontSize = `${sizePx}px`; 
- span.textContent = selection.toString(); 
- const range = selection.getRangeAt(0); 
- range.deleteContents(); 
- range.insertNode(span); 
-
- // サイズ変更後も自動でリセット
- range.collapse(false);
- const resetSpan = document.createElement("span");
- resetSpan.style.fontSize = "18px";
- resetSpan.innerHTML = "&#8203;";
- range.insertNode(resetSpan);
- range.selectNodeContents(resetSpan);
- range.collapse(false);
- selection.removeAllRanges();
- selection.addRange(range);
-
- if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); 
- };
-
  const changeFontFamily = (fontFamily: string) => { 
  const selection = window.getSelection(); 
- if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return; 
+ if (!selection || selection.rangeCount === 0) return; 
  const span = document.createElement("span"); 
  span.style.fontFamily = fontFamily; 
  span.textContent = selection.toString(); 
  const range = selection.getRangeAt(0); 
  range.deleteContents(); 
  range.insertNode(span); 
-
- // フォント変更後も自動でリセット
- range.collapse(false);
- const resetSpan = document.createElement("span");
- resetSpan.style.fontFamily = "'Noto Sans JP', sans-serif";
- resetSpan.innerHTML = "&#8203;";
- range.insertNode(resetSpan);
- range.selectNodeContents(resetSpan);
- range.collapse(false);
- selection.removeAllRanges();
- selection.addRange(range);
-
  if (lastFocusedBlockRef.current) handleUpdateBlock(lastFocusedBlockRef.current.id, { content: lastFocusedBlockRef.current.element.innerHTML }); 
  };
 
@@ -879,7 +843,7 @@ export default function MemoApp() {
  </div>
  </div>
 
- {/* 装飾ツールバー ＆ ページ切り替え（不要なボタンはすべて削除） */}
+ {/* 装飾ツールバー ＆ ページ切り替え（余計なボタンを削除してスッキリ！） */}
  <div className="flex items-center justify-between px-4 lg:px-6 pb-3 overflow-x-auto gap-4">
  <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 px-2 border border-slate-200 min-w-max">
  <input type="color" onChange={(e) => applyFormat("foreColor", e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" title="文字色" />
@@ -897,7 +861,7 @@ export default function MemoApp() {
  <div className="w-px h-4 bg-slate-300"></div>
  <button onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")} className="font-bold px-3 py-1 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors text-slate-700">B</button>
  <div className="w-px h-4 bg-slate-300"></div>
-
+ 
  {/* アコーディオン追加ボタン */}
  <button 
  onMouseDown={(e) => e.preventDefault()} 
